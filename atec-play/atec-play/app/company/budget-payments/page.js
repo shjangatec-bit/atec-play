@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
@@ -20,17 +21,22 @@ export default async function BudgetPaymentsPage() {
   const supabase = createClient();
   const { data: reportPosts } = await supabase
     .from("posts")
-    .select("club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id))")
+    .select("id, title, activity_date, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id))")
     .eq("type", "report")
     .gte("activity_date", monthStart)
     .lt("activity_date", nextMonth);
 
   const byClub = {};
   (reportPosts || []).forEach((p) => {
-    (p.post_attendees || []).forEach((a) => {
-      if (a.user?.company_id !== companyId) return;
-      if (!byClub[p.club_id]) byClub[p.club_id] = { clubName: p.club?.name, attendees: new Map() };
-      byClub[p.club_id].attendees.set(a.user_id, a.user.name);
+    const companyAttendees = (p.post_attendees || []).filter((a) => a.user?.company_id === companyId);
+    if (companyAttendees.length === 0) return;
+    if (!byClub[p.club_id]) byClub[p.club_id] = { clubName: p.club?.name, attendees: new Map(), reports: [] };
+    companyAttendees.forEach((a) => byClub[p.club_id].attendees.set(a.user_id, a.user.name));
+    byClub[p.club_id].reports.push({
+      postId: p.id,
+      title: p.title,
+      activityDate: p.activity_date,
+      attendeeNames: companyAttendees.map((a) => a.user.name),
     });
   });
 
@@ -62,6 +68,7 @@ export default async function BudgetPaymentsPage() {
       unitAmount,
       amount: attendeeCount * unitAmount,
       disbursement: existingMap[clubId],
+      reports: byClub[clubId].reports,
     };
   });
 
@@ -93,34 +100,48 @@ export default async function BudgetPaymentsPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.clubId}>
-                  <td>{r.clubName}</td>
-                  <td>{r.attendeeNames.map((n) => <span className="badge badge-gray" key={n} style={{ marginRight: 4 }}>{n}</span>)}</td>
-                  <td className="mono" style={{ textAlign: "right" }}>{r.unitAmount.toLocaleString()}</td>
-                  <td className="mono" style={{ textAlign: "right" }}>{r.amount.toLocaleString()}</td>
-                  <td>
-                    {r.disbursement?.status === "paid" ? (
-                      <span className="badge badge-green">지급완료</span>
-                    ) : (
-                      <span className="badge badge-amber">미지급</span>
-                    )}
-                  </td>
-                  <td>
-                    {r.disbursement?.status === "paid" ? (
-                      <span className="co-tag">{new Date(r.disbursement.paid_at).toLocaleDateString("ko-KR")} 처리 · {r.disbursement.users?.name}</span>
-                    ) : (
-                      <DisburseButton
-                        clubId={r.clubId}
-                        companyId={companyId}
-                        year={year}
-                        month={month}
-                        attendeeCount={r.attendeeCount}
-                        amount={r.amount}
-                        paidBy={authUser.id}
-                      />
-                    )}
-                  </td>
-                </tr>
+                <Fragment key={r.clubId}>
+                  <tr key={r.clubId}>
+                    <td>{r.clubName}</td>
+                    <td>{r.attendeeNames.map((n) => <span className="badge badge-gray" key={n} style={{ marginRight: 4 }}>{n}</span>)}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{r.unitAmount.toLocaleString()}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{r.amount.toLocaleString()}</td>
+                    <td>
+                      {r.disbursement?.status === "paid" ? (
+                        <span className="badge badge-green">지급완료</span>
+                      ) : (
+                        <span className="badge badge-amber">미지급</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.disbursement?.status === "paid" ? (
+                        <span className="co-tag">{new Date(r.disbursement.paid_at).toLocaleDateString("ko-KR")} 처리 · {r.disbursement.users?.name}</span>
+                      ) : (
+                        <DisburseButton
+                          clubId={r.clubId}
+                          companyId={companyId}
+                          year={year}
+                          month={month}
+                          attendeeCount={r.attendeeCount}
+                          amount={r.amount}
+                          paidBy={authUser.id}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                  <tr key={r.clubId + "-detail"}>
+                    <td colSpan={6} style={{ paddingTop: 0, paddingBottom: 14, borderBottom: "1px solid var(--line)" }}>
+                      <div style={{ background: "var(--bg)", borderRadius: 8, padding: "8px 12px" }}>
+                        <div className="co-tag" style={{ marginBottom: 4 }}>이 금액을 구성한 보고서 {r.reports.length}건</div>
+                        {r.reports.map((rep) => (
+                          <div key={rep.postId} style={{ fontSize: 12, color: "var(--ink-2)", padding: "3px 0" }}>
+                            <span className="mono">{rep.activityDate}</span> · {rep.title} — 참석: {rep.attendeeNames.join(", ")}
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
               {rows.length === 0 && (
                 <tr><td colSpan={6}><div className="empty-note">이번 달, 자사 소속 참석자가 있는 동호회가 없습니다.</div></td></tr>
