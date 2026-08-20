@@ -15,10 +15,14 @@ export default async function OrgPage({ searchParams }) {
   const supabase = createClient();
   const { data: companies } = await supabase.from("companies").select("id, name").order("name");
   const { data: clubs } = await supabase.from("clubs").select("id, name").order("name");
+  const { data: permMaster } = await supabase.from("permissions").select("code, name");
+  const permNameMap = Object.fromEntries((permMaster || []).map((p) => [p.code, p.name]));
 
   let query = supabase
     .from("users")
-    .select("id, name, status, company:company_id(id, name), club_members!user_id(status, club:club_id(id, name))")
+    .select(
+      "id, name, status, company:company_id(id, name), club_members!user_id(status, role_label, club:club_id(id, name)), user_permissions!user_id(permission_code, club_id, company_id)"
+    )
     .eq("status", "approved")
     .order("name");
 
@@ -81,30 +85,50 @@ export default async function OrgPage({ searchParams }) {
               <tr>
                 <th>이름</th>
                 <th>소속회사</th>
-                <th>가입 동호회</th>
+                <th>가입 동호회 · 직책</th>
+                <th>보유 권한</th>
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.name}</td>
-                  <td>{u.company?.name}</td>
-                  <td>
-                    {(u.club_members || [])
-                      .filter((m) => m.status === "approved")
-                      .map((m) => (
-                        <span className="badge badge-gray" key={m.club.id} style={{ marginRight: 4 }}>
-                          {m.club.name}
+              {filteredUsers.map((u) => {
+                const approvedClubs = (u.club_members || []).filter((m) => m.status === "approved");
+                const perms = u.user_permissions || [];
+                const uniqueCodes = [...new Set(perms.map((p) => p.permission_code))];
+                return (
+                  <tr key={u.id}>
+                    <td>{u.name}</td>
+                    <td>{u.company?.name}</td>
+                    <td>
+                      {approvedClubs.length === 0 && (
+                        <span className="empty-note" style={{ padding: 0, display: "inline" }}>
+                          가입 동호회 없음
+                        </span>
+                      )}
+                      {approvedClubs.map((m) => (
+                        <span
+                          className={`badge ${m.role_label === "회장" ? "badge-brand" : m.role_label === "총무" ? "badge-gray" : "badge-gray"}`}
+                          key={m.club.id}
+                          style={{ marginRight: 4, marginBottom: 3, display: "inline-block" }}
+                        >
+                          {m.club.name} · {m.role_label}
                         </span>
                       ))}
-                    {(u.club_members || []).filter((m) => m.status === "approved").length === 0 && (
-                      <span className="empty-note" style={{ padding: 0, display: "inline" }}>
-                        가입 동호회 없음
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      {uniqueCodes.length === 0 && (
+                        <span className="empty-note" style={{ padding: 0, display: "inline" }}>
+                          부여된 권한 없음
+                        </span>
+                      )}
+                      {uniqueCodes.map((code) => (
+                        <span className="badge badge-amber" key={code} style={{ marginRight: 4, marginBottom: 3, display: "inline-block" }}>
+                          {permNameMap[code] || code}
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
