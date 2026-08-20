@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/client";
 const STATUS_LABEL = { pending: "대기", approved: "승인됨", rejected: "반려됨", suspended: "정지됨" };
 const STATUS_CLASS = { pending: "badge-amber", approved: "badge-green", rejected: "badge-red", suspended: "badge-gray" };
 
+// 계정 승인 시 자동으로 부여되는 "회원" 기본 권한 (전사/개인 단위 — 특정 동호회 가입 전에도 적용 가능한 것들)
+const DEFAULT_MEMBER_PERMISSIONS = ["CLUB_CREATE_REQUEST", "CLUB_CLOSE_REQUEST"];
+
 export default function AccountRow({ user, approverId }) {
   const router = useRouter();
   const supabase = createClient();
@@ -14,6 +17,19 @@ export default function AccountRow({ user, approverId }) {
       .from("users")
       .update({ status, approved_by: approverId, approved_at: new Date().toISOString() })
       .eq("id", user.id);
+
+    if (status === "approved") {
+      const rows = DEFAULT_MEMBER_PERMISSIONS.map((code) => ({
+        user_id: user.id,
+        permission_code: code,
+        club_id: null,
+        company_id: null,
+        granted_by: approverId,
+      }));
+      await supabase
+        .from("user_permissions")
+        .upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
+    }
     router.refresh();
   }
 
