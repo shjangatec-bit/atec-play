@@ -157,6 +157,10 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  function safeName(name) {
+    return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!title.trim()) return;
@@ -167,12 +171,21 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
       .select()
       .single();
 
-    if (!error && post && isGallery && file) {
-      const path = `${clubId}/${post.id}/${file.name}`;
+    if (error || !post) {
+      setSaving(false);
+      alert("게시글 등록 실패: " + (error?.message || "알 수 없는 오류"));
+      return;
+    }
+
+    if (isGallery && file) {
+      const path = `${clubId}/${post.id}/${Date.now()}-${safeName(file.name)}`;
       const { error: upErr } = await supabase.storage.from("club-files").upload(path, file);
-      if (!upErr) {
+      if (upErr) {
+        alert("사진 업로드 실패: " + upErr.message);
+      } else {
         const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
-        await supabase.from("post_attachments").insert({ post_id: post.id, file_url: pub.publicUrl, file_type: "photo" });
+        const { error: attachErr } = await supabase.from("post_attachments").insert({ post_id: post.id, file_url: pub.publicUrl, file_type: "photo" });
+        if (attachErr) alert("사진 정보 저장 실패: " + attachErr.message);
       }
     }
     setTitle("");
@@ -187,9 +200,17 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
       <div className="card">
         <div className="section-title">사진 갤러리</div>
         <div className="gallery-grid">
-          {posts.map((p) => (
-            <div className="gph" key={p.id} title={p.title} />
-          ))}
+          {posts.map((p) => {
+            const photoUrl = p.post_attachments?.[0]?.file_url;
+            return (
+              <div
+                className="gph"
+                key={p.id}
+                title={p.title}
+                style={photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : {}}
+              />
+            );
+          })}
         </div>
         {posts.length === 0 && <div className="empty-note">등록된 사진이 없습니다.</div>}
         {canWrite && (
@@ -242,6 +263,10 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
 
+  function safeName(name) {
+    return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!title.trim() || !activityDate) return;
@@ -253,23 +278,38 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
       .select()
       .single();
 
-    if (!error && post) {
-      const attendeeIds = Object.keys(checked).filter((id) => checked[id]);
-      if (attendeeIds.length > 0) {
-        await supabase.from("post_attendees").insert(attendeeIds.map((user_id) => ({ post_id: post.id, user_id })));
-      }
-      if (file) {
-        const path = `${clubId}/${post.id}/${file.name}`;
-        const { error: upErr } = await supabase.storage.from("club-files").upload(path, file);
-        if (!upErr) {
-          const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
-          const fileType = /\.(pdf|jpg|jpeg|png)$/i.test(file.name) ? "receipt" : "document";
-          await supabase.from("post_attachments").insert({ post_id: post.id, file_url: pub.publicUrl, file_type: fileType });
-        }
+    if (error || !post) {
+      setSaving(false);
+      alert("보고서 등록 실패: " + (error?.message || "알 수 없는 오류"));
+      return;
+    }
+
+    const attendeeIds = Object.keys(checked).filter((id) => checked[id]);
+    if (attendeeIds.length > 0) {
+      const { error: attErr } = await supabase
+        .from("post_attendees")
+        .insert(attendeeIds.map((user_id) => ({ post_id: post.id, user_id })));
+      if (attErr) alert("참석자 저장 중 문제가 발생했습니다: " + attErr.message);
+    }
+
+    if (file) {
+      const path = `${clubId}/${post.id}/${Date.now()}-${safeName(file.name)}`;
+      const { error: upErr } = await supabase.storage.from("club-files").upload(path, file);
+      if (upErr) {
+        alert("첨부파일 업로드 실패: " + upErr.message);
+      } else {
+        const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
+        const fileType = /\.(pdf|jpg|jpeg|png)$/i.test(file.name) ? "receipt" : "document";
+        const { error: attachErr } = await supabase
+          .from("post_attachments")
+          .insert({ post_id: post.id, file_url: pub.publicUrl, file_type: fileType });
+        if (attachErr) alert("첨부파일 정보 저장 실패: " + attachErr.message);
       }
     }
+
     setTitle(""); setContent(""); setActivityDate(""); setChecked({}); setFile(null);
     setSaving(false);
+    alert("보고서가 등록되었습니다.");
     router.refresh();
   }
 
@@ -287,10 +327,14 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
                 <span className="mono">활동일 {p.activity_date}</span>
                 <span>참석 {count}명 · 지원금 <span className="mono">{(count * unitAmount).toLocaleString()}</span></span>
               </div>
+              {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6, whiteSpace: "pre-wrap" }}>{p.content}</div>}
               <div className="row-flex" style={{ marginTop: 8, flexWrap: "wrap" }}>
+                {(p.post_attachments || []).length === 0 && (
+                  <span className="empty-note" style={{ padding: 0 }}>첨부파일 없음</span>
+                )}
                 {(p.post_attachments || []).map((a, i) => (
                   <a key={i} href={a.file_url} target="_blank" rel="noreferrer" className={`badge ${a.file_type === "receipt" ? "badge-red" : "badge-gray"}`}>
-                    {a.file_type === "receipt" ? "증빙" : "첨부파일"}
+                    {a.file_type === "receipt" ? "증빙 열기" : "첨부파일 열기"}
                   </a>
                 ))}
               </div>

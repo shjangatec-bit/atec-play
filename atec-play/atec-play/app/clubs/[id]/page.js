@@ -21,7 +21,7 @@ export default async function ClubDetailPage({ params }) {
 
   const { data: boardPosts } = await supabase
     .from("posts")
-    .select("id, type, title, content, created_at, author:author_id(name)")
+    .select("id, type, title, content, created_at, author:author_id(name), post_attachments(file_url, file_type)")
     .eq("club_id", clubId)
     .in("type", ["notice", "general", "photo"])
     .order("created_at", { ascending: false });
