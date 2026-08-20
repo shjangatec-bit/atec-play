@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import LogoutButton from "@/components/LogoutButton";
+import CoverImageUploader from "./CoverImageUploader";
 import ClubDetailTabs from "./ClubDetailTabs";
 
 export default async function ClubDetailPage({ params }) {
@@ -107,13 +108,17 @@ export default async function ClubDetailPage({ params }) {
         )}
         <div className="crumb">동호회 / {club.name}</div>
         <div className="detail-head">
-          <div className="thumb-lg" />
-          <div>
+          <div
+            className="thumb-lg"
+            style={club.cover_image_url ? { backgroundImage: `url(${club.cover_image_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}}
+          />
+          <div style={{ flex: 1 }}>
             <h1>{club.name}</h1>
             <div className="sub">
               {club.description} · {club.status === "active" ? "운영중" : "폐설"}
             </div>
           </div>
+          {canApprove && <CoverImageUploader clubId={club.id} />}
         </div>
 
         <ClubDetailTabs
