@@ -12,7 +12,7 @@ export default async function PendingPage() {
   const supabase = createClient();
   const { data: clubs } = await supabase
     .from("clubs")
-    .select("id, name, description, club_members(count)")
+    .select("id, name, description, cover_image_url, club_members(count)")
     .eq("status", "active");
 
   const { data: myApplications } = await supabase
@@ -62,7 +62,10 @@ export default async function PendingPage() {
           {(clubs || []).map((club) => (
             <div className="club-card" key={club.id}>
               <a href={`/clubs/${club.id}`}>
-                <div className="thumb" />
+                <div
+                  className="thumb"
+                  style={club.cover_image_url ? { backgroundImage: `url(${club.cover_image_url})`, backgroundSize: "cover", backgroundPosition: "center" } : {}}
+                />
                 <div className="body" style={{ paddingBottom: 4 }}>
                   <h3>{club.name}</h3>
                   <div className="desc">{club.description}</div>
