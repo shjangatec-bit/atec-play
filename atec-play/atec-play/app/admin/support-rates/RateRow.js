@@ -6,7 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 export default function RateRow({ club, userId }) {
   const router = useRouter();
   const supabase = createClient();
-  const existing = club.club_support_rates?.[0];
+  // club_support_rates는 club당 1개(1:1)라 Supabase가 배열이 아니라 객체로 돌려줄 수 있음 — 둘 다 방어
+  const raw = club.club_support_rates;
+  const existing = Array.isArray(raw) ? raw[0] : raw;
   const [amount, setAmount] = useState(existing?.unit_amount ?? 0);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
