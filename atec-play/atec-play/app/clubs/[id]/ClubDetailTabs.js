@@ -30,6 +30,20 @@ export default function ClubDetailTabs({
 
   async function processMember(memberId, status) {
     await supabase.from("club_members").update({ status, processed_by: currentUserId, processed_at: new Date().toISOString() }).eq("id", memberId);
+
+    if (status === "approved") {
+      const member = members.find((m) => m.id === memberId);
+      if (member) {
+        const defaultCodes = ["CLUB_VIEW", "CLUB_POST_WRITE", "CLUB_BUDGET_VIEW"];
+        const rows = defaultCodes.map((code) => ({
+          user_id: member.user.id,
+          club_id: club.id,
+          permission_code: code,
+          granted_by: currentUserId,
+        }));
+        await supabase.from("user_permissions").upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
+      }
+    }
     router.refresh();
   }
 
