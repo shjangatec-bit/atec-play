@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
+import LogoutButton from "@/components/LogoutButton";
 import ClubDetailTabs from "./ClubDetailTabs";
 
 export default async function ClubDetailPage({ params }) {
@@ -81,6 +82,16 @@ export default async function ClubDetailPage({ params }) {
         <div className="sidebar">
           <div className="side-logo">ATEC PLAY<span>통합 동호회 관리</span></div>
           <a href="/pending" className="side-link active"><span className="side-dot" />동호회 둘러보기</a>
+          <div className="side-user">
+            <div className="avatar" style={{ background: "var(--gray-bg)", color: "var(--ink-2)" }}>
+              {profile?.name?.slice(0, 2) || "게스트"}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="name">{profile?.name}</div>
+              <div className="role">게스트 · 승인 대기</div>
+            </div>
+            <LogoutButton />
+          </div>
         </div>
       ) : (
         <Sidebar profile={profile} permissions={permissions} active="/clubs" />
