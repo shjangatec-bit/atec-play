@@ -12,7 +12,7 @@ export default async function ClubsPage({ searchParams }) {
   const supabase = createClient();
   const { data: clubs } = await supabase
     .from("clubs")
-    .select("id, name, description, status, club_members(status)")
+    .select("id, name, description, status, cover_image_url, club_members(status)")
     .order("name");
 
   const { data: myMemberships } = await supabase
@@ -48,7 +48,16 @@ export default async function ClubsPage({ searchParams }) {
             return (
               <div className="club-card" key={club.id}>
                 <a href={`/clubs/${club.id}`}>
-                  <div className="thumb" style={club.status === "closed" ? { background: "var(--gray-bg)" } : {}} />
+                  <div
+                    className="thumb"
+                    style={
+                      club.status === "closed"
+                        ? { background: "var(--gray-bg)" }
+                        : club.cover_image_url
+                        ? { backgroundImage: `url(${club.cover_image_url})`, backgroundSize: "cover", backgroundPosition: "center" }
+                        : {}
+                    }
+                  />
                   <div className="body" style={{ paddingBottom: 4 }}>
                     <h3 style={club.status === "closed" ? { color: "var(--ink-3)" } : {}}>{club.name}</h3>
                     <div className="desc">{club.description}</div>
