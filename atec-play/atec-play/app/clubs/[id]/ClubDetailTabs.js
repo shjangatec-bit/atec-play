@@ -23,10 +23,12 @@ export default function ClubDetailTabs({
   canApprove,
   canWriteReport,
   canWritePost,
+  isGuest,
 }) {
   const [tab, setTab] = useState("board");
   const router = useRouter();
   const supabase = createClient();
+  const visibleTabs = isGuest ? TABS.filter((t) => t.key === "board" || t.key === "gallery") : TABS;
 
   async function processMember(memberId, status) {
     await supabase.from("club_members").update({ status, processed_by: currentUserId, processed_at: new Date().toISOString() }).eq("id", memberId);
@@ -55,14 +57,14 @@ export default function ClubDetailTabs({
   return (
     <div>
       <div className="tabbar">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <div key={t.key} className={`tab${tab === t.key ? " active" : ""}`} style={{ cursor: "pointer" }} onClick={() => setTab(t.key)}>
             {t.label}
           </div>
         ))}
       </div>
 
-      {tab === "members" && (
+      {tab === "members" && !isGuest && (
         <div className="grid-2">
           <div className="card">
             <div className="section-title">회원 현황 ({approvedMembers.length}명)</div>
@@ -108,7 +110,7 @@ export default function ClubDetailTabs({
       {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="notice" />}
       {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="photo" isGallery />}
 
-      {tab === "report" && (
+      {tab === "report" && !isGuest && (
         <ReportTab
           posts={reportPosts}
           clubId={club.id}
@@ -119,7 +121,7 @@ export default function ClubDetailTabs({
         />
       )}
 
-      {tab === "budget" && (
+      {tab === "budget" && !isGuest && (
         <div className="card">
           <div className="empty-note" style={{ padding: "0 0 12px" }}>
             이 동호회의 지원 단가는 <b style={{ color: "var(--ink-2)" }}>1인당 {unitAmount.toLocaleString()}원</b>이며, 활동보고서에 체크된 참석 인원을 기준으로 매달 자동 집계됩니다.
