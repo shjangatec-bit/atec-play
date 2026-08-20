@@ -18,7 +18,7 @@ export default async function OrgPage({ searchParams }) {
 
   let query = supabase
     .from("users")
-    .select("id, name, status, company:company_id(id, name), club_members(status, club:club_id(id, name))")
+    .select("id, name, status, company:company_id(id, name), club_members!user_id(status, club:club_id(id, name))")
     .eq("status", "approved")
     .order("name");
 
