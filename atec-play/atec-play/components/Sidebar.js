@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/org", label: "동호회원 명단" },
   { href: "/clubs", label: "동호회 현황" },
   { href: "/guide", label: "운영지침" },
+  { href: "/forms", label: "양식함" },
 ];
 
 const ADMIN_LINKS = [
