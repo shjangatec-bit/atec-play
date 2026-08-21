@@ -1,13 +1,16 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/auth";
+import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import JoinButton from "@/components/JoinButton";
+import ReactivateButton from "./ReactivateButton";
 
 export default async function ClubsPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
   if (profile?.status !== "approved") redirect("/pending");
+
+  const canReactivate = hasPermission(permissions, "CLUB_CLOSE_APPROVE");
 
   const supabase = createClient();
   const { data: clubs } = await supabase
@@ -66,7 +69,10 @@ export default async function ClubsPage({ searchParams }) {
                 <div className="body" style={{ paddingTop: 0 }}>
                   <div className="meta">
                     {club.status === "closed" ? (
-                      <span className="badge badge-gray">폐설</span>
+                      <span className="row-flex" style={{ gap: 6 }}>
+                        <span className="badge badge-gray">폐설</span>
+                        {canReactivate && <ReactivateButton clubId={club.id} />}
+                      </span>
                     ) : (
                       <span>회원 {memberCount}명</span>
                     )}
