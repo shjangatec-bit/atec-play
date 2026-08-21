@@ -67,7 +67,9 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
     router.refresh();
   }
 
-  async function applyTemplate(name) {
+const ROLE_LABEL_BY_TEMPLATE = { 회장: "회장", 총무: "총무", 회원: "회원" };
+
+async function applyTemplate(name) {
     setSaving(true);
     const codes = TEMPLATES[name];
     const rows = codes.map((code) => {
@@ -81,6 +83,17 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
       };
     });
     await supabase.from("user_permissions").upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
+
+    const roleLabel = ROLE_LABEL_BY_TEMPLATE[name];
+    if (roleLabel) {
+      await supabase
+        .from("club_members")
+        .update({ role_label: roleLabel })
+        .eq("club_id", clubId)
+        .eq("user_id", userId)
+        .eq("status", "approved");
+    }
+
     setSaving(false);
     router.refresh();
   }
@@ -111,7 +124,7 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
               </button>
             ))}
           </div>
-          <div className="empty-note">템플릿 선택 시 해당 항목이 자동 체크됩니다. 이후 아래에서 개별로 조정할 수 있습니다.</div>
+          <div className="empty-note">템플릿 선택 시 해당 항목이 자동 체크됩니다. 이후 아래에서 개별로 조정할 수 있습니다. (회장·총무·회원 템플릿은 선택한 동호회에 이미 가입되어 있는 계정이면 회원현황의 직책 표시도 함께 바뀝니다)</div>
         </div>
       </div>
 
