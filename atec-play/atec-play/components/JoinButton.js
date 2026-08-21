@@ -16,7 +16,11 @@ export default function JoinButton({ clubId, userId, alreadyApplied }) {
       status: "pending",
     });
     setLoading(false);
-    if (!error) setApplied(true);
+    if (error) {
+      alert("가입 신청 실패: " + error.message);
+      return;
+    }
+    setApplied(true);
   }
 
   if (applied) {
