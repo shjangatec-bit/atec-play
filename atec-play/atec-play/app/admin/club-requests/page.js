@@ -29,14 +29,14 @@ export default async function ClubRequestsPage() {
         <div className="card">
           <table>
             <thead>
-              <tr><th>구분</th><th>동호회명</th><th>신청자</th><th>신청일</th><th>상태</th><th></th></tr>
+              <tr><th>구분</th><th>동호회명</th><th>신청자</th><th>신청일</th><th>첨부파일</th><th>상태</th><th></th></tr>
             </thead>
             <tbody>
               {(requests || []).map((r) => (
                 <RequestRow key={r.id} req={r} reviewerId={authUser.id} />
               ))}
               {(requests || []).length === 0 && (
-                <tr><td colSpan={6}><div className="empty-note">신청 내역이 없습니다.</div></td></tr>
+                <tr><td colSpan={7}><div className="empty-note">신청 내역이 없습니다.</div></td></tr>
               )}
             </tbody>
           </table>

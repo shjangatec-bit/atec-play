@@ -72,6 +72,15 @@ export default function RequestRow({ req, reviewerId }) {
       <td>{req.requester?.name}</td>
       <td className="mono">{new Date(req.created_at).toLocaleDateString("ko-KR")}</td>
       <td>
+        {req.file_url ? (
+          <a href={req.file_url} target="_blank" rel="noreferrer" className="badge badge-red">
+            첨부파일 보기
+          </a>
+        ) : (
+          <span className="empty-note" style={{ padding: 0 }}>없음</span>
+        )}
+      </td>
+      <td>
         <span className={`badge ${req.status === "pending" ? "badge-amber" : req.status === "approved" ? "badge-green" : "badge-red"}`}>
           {req.status === "pending" ? "대기" : req.status === "approved" ? "승인" : "반려"}
         </span>
