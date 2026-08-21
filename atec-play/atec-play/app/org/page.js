@@ -71,8 +71,8 @@ export default async function OrgPage({ searchParams }) {
       <div className="main">
         <div className="topbar">
           <div>
-            <div className="crumb">홈 / 조직·인원</div>
-            <h1>조직/인원 조회</h1>
+            <div className="crumb">홈 / 동호회원 명단</div>
+            <h1>동호회원 명단</h1>
           </div>
         </div>
         <div className="grid-3" style={{ marginBottom: 16 }}>
