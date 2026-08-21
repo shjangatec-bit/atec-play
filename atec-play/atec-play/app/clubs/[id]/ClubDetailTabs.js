@@ -223,6 +223,7 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
   const [content, setContent] = useState("");
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -274,12 +275,40 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
                 className="gph"
                 key={p.id}
                 title={p.title}
-                style={photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : {}}
+                onClick={() => photoUrl && setLightbox({ url: photoUrl, title: p.title })}
+                style={{
+                  cursor: photoUrl ? "pointer" : "default",
+                  ...(photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+                }}
               />
             );
           })}
         </div>
         {posts.length === 0 && <div className="empty-note">등록된 사진이 없습니다.</div>}
+        {lightbox && (
+          <div
+            onClick={() => setLightbox(null)}
+            style={{
+              position: "fixed", inset: 0, background: "rgba(20,24,31,0.85)", zIndex: 1000,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, cursor: "zoom-out",
+            }}
+          >
+            <img
+              src={lightbox.url}
+              alt={lightbox.title}
+              style={{ maxWidth: "90vw", maxHeight: "80vh", borderRadius: 10, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div style={{ color: "#fff", fontSize: 14, marginTop: 14 }}>{lightbox.title}</div>
+            <button
+              onClick={() => setLightbox(null)}
+              className="btn-sm btn-outline"
+              style={{ marginTop: 16, background: "rgba(255,255,255,0.1)", color: "#fff", borderColor: "rgba(255,255,255,0.3)" }}
+            >
+              닫기
+            </button>
+          </div>
+        )}
         {canWrite && (
           <form onSubmit={submit} className="row-flex" style={{ marginTop: 14, flexWrap: "wrap" }}>
             <input placeholder="사진 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1, minWidth: 160, height: 36, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }} />
