@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/dashboard", label: "대시보드" },
   { href: "/org", label: "동호회원 명단" },
   { href: "/clubs", label: "동호회 현황" },
+  { href: "/guide", label: "운영지침" },
 ];
 
 const ADMIN_LINKS = [
