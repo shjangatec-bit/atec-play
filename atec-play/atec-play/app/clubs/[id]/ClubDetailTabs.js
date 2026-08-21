@@ -183,8 +183,8 @@ export default function ClubDetailTabs({
               </tr>
             </thead>
             <tbody>
-              {members.filter((m) => m.status === "approved").map((m) => {
-                const myPerms = memberPermissions[m.user.id] || [];
+              {members.filter((m) => m.status === "approved" && m.user).map((m) => {
+                const myPerms = memberPermissions[m.user?.id] || [];
                 return (
                   <tr key={m.id}>
                     <td>
@@ -197,7 +197,7 @@ export default function ClubDetailTabs({
                           <span
                             className={`switch${on ? " on" : ""}`}
                             style={{ cursor: "pointer" }}
-                            onClick={() => toggleMemberPermission(m.user.id, p.code, on)}
+                            onClick={() => toggleMemberPermission(m.user?.id, p.code, on)}
                           />
                         </td>
                       );
@@ -205,7 +205,7 @@ export default function ClubDetailTabs({
                   </tr>
                 );
               })}
-              {members.filter((m) => m.status === "approved").length === 0 && (
+              {members.filter((m) => m.status === "approved" && m.user).length === 0 && (
                 <tr><td colSpan={CLUB_PERM_LABELS.length + 1}><div className="empty-note">승인된 회원이 없습니다.</div></td></tr>
               )}
             </tbody>
