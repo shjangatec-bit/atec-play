@@ -33,7 +33,7 @@ export default async function ClubsPage({ searchParams }) {
         <div className="topbar">
           <div>
             <div className="crumb">홈 / 동호회</div>
-            <h1>{searchParams?.mine ? "내 동호회" : "동호회 목록"}</h1>
+            <h1>{searchParams?.mine ? "내 동호회" : "동호회 현황"}</h1>
           </div>
           {!searchParams?.mine && (
             <div className="top-actions">
