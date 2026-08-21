@@ -13,10 +13,14 @@ export default function AccountRow({ user, approverId }) {
   const supabase = createClient();
 
   async function updateStatus(status) {
-    await supabase
+    const { error } = await supabase
       .from("users")
       .update({ status, approved_by: approverId, approved_at: new Date().toISOString() })
       .eq("id", user.id);
+    if (error) {
+      alert("처리 실패: " + error.message);
+      return;
+    }
 
     if (status === "approved") {
       const rows = DEFAULT_MEMBER_PERMISSIONS.map((code) => ({
