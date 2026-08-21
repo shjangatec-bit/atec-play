@@ -23,7 +23,7 @@ export default async function ClubRequestsPage() {
         <div className="topbar">
           <div>
             <div className="crumb">관리자</div>
-            <h1>동호회 개설 승인</h1>
+            <h1>동호회 개설/폐설 승인</h1>
           </div>
         </div>
         <div className="card">
