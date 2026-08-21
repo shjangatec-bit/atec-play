@@ -9,6 +9,16 @@ const TABS = [
   { key: "gallery", label: "사진 갤러리" },
   { key: "report", label: "활동보고서" },
   { key: "budget", label: "지원금 현황" },
+  { key: "permissions", label: "회원 권한" },
+];
+
+const CLUB_PERM_LABELS = [
+  { code: "CLUB_MEMBER_APPROVE", label: "가입/탈회 승인" },
+  { code: "CLUB_VIEW", label: "동호회 정보 조회" },
+  { code: "CLUB_POST_WRITE", label: "게시글 작성" },
+  { code: "CLUB_REPORT_WRITE", label: "활동보고서/증빙 업로드" },
+  { code: "CLUB_REPORT_VIEW", label: "증빙 열람" },
+  { code: "CLUB_BUDGET_VIEW", label: "지원금 현황 조회" },
 ];
 
 export default function ClubDetailTabs({
@@ -24,11 +34,23 @@ export default function ClubDetailTabs({
   canWriteReport,
   canWritePost,
   isGuest,
+  memberPermissions,
 }) {
   const [tab, setTab] = useState("board");
   const router = useRouter();
   const supabase = createClient();
-  const visibleTabs = isGuest ? TABS.filter((t) => t.key === "board" || t.key === "gallery") : TABS;
+  const visibleTabs = isGuest
+    ? TABS.filter((t) => t.key === "board" || t.key === "gallery")
+    : TABS.filter((t) => t.key !== "permissions" || canApprove);
+
+  async function toggleMemberPermission(userId, code, isOn) {
+    if (isOn) {
+      await supabase.from("user_permissions").delete().eq("user_id", userId).eq("club_id", club.id).eq("permission_code", code);
+    } else {
+      await supabase.from("user_permissions").insert({ user_id: userId, club_id: club.id, permission_code: code, granted_by: currentUserId });
+    }
+    router.refresh();
+  }
 
   async function processMember(memberId, status) {
     await supabase.from("club_members").update({ status, processed_by: currentUserId, processed_at: new Date().toISOString() }).eq("id", memberId);
@@ -140,6 +162,51 @@ export default function ClubDetailTabs({
               ))}
               {Object.keys(monthly).length === 0 && (
                 <tr><td colSpan={3}><div className="empty-note">등록된 활동보고서가 없습니다.</div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "permissions" && canApprove && (
+        <div className="card">
+          <div className="empty-note" style={{ padding: "0 0 10px" }}>
+            이 동호회 회원의 개별 권한만 조정할 수 있습니다. (전사 권한이나 다른 동호회 권한은 여기서 바꿀 수 없습니다)
+          </div>
+          <table className="toggle-table">
+            <thead>
+              <tr>
+                <th>회원</th>
+                {CLUB_PERM_LABELS.map((p) => (
+                  <th key={p.code} style={{ textAlign: "center", fontSize: 11 }}>{p.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {members.filter((m) => m.status === "approved").map((m) => {
+                const myPerms = memberPermissions[m.user.id] || [];
+                return (
+                  <tr key={m.id}>
+                    <td>
+                      {m.user?.name} <span className="co-tag">{m.user?.company?.name}</span>
+                    </td>
+                    {CLUB_PERM_LABELS.map((p) => {
+                      const on = myPerms.includes(p.code);
+                      return (
+                        <td key={p.code} style={{ textAlign: "center" }}>
+                          <span
+                            className={`switch${on ? " on" : ""}`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => toggleMemberPermission(m.user.id, p.code, on)}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              {members.filter((m) => m.status === "approved").length === 0 && (
+                <tr><td colSpan={CLUB_PERM_LABELS.length + 1}><div className="empty-note">승인된 회원이 없습니다.</div></td></tr>
               )}
             </tbody>
           </table>
