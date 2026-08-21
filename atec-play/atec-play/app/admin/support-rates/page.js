@@ -24,7 +24,7 @@ export default async function SupportRatesPage() {
         <div className="topbar">
           <div>
             <div className="crumb">관리자</div>
-            <h1>동호회별 지원 단가 설정</h1>
+            <h1>지원금 설정</h1>
           </div>
         </div>
         <div className="card">
