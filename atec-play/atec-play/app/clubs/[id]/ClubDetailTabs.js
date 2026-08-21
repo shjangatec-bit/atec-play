@@ -34,7 +34,7 @@ export default function ClubDetailTabs({
   canWriteReport,
   canWritePost,
   isGuest,
-  memberPermissions,
+  memberPermissions = {},
 }) {
   const [tab, setTab] = useState("board");
   const router = useRouter();

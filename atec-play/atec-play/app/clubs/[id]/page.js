@@ -69,6 +69,19 @@ export default async function ClubDetailPage({ params }) {
   const canWriteReport = !isGuest && hasPermission(permissions, "CLUB_REPORT_WRITE", { clubId });
   const canWritePost = !isGuest && hasPermission(permissions, "CLUB_POST_WRITE", { clubId });
 
+  // 회원 권한 관리 탭용 데이터 (회장/총무만)
+  let memberPermissions = {};
+  if (canApprove) {
+    const { data: cp } = await supabase
+      .from("user_permissions")
+      .select("user_id, permission_code")
+      .eq("club_id", clubId);
+    (cp || []).forEach((row) => {
+      if (!memberPermissions[row.user_id]) memberPermissions[row.user_id] = [];
+      memberPermissions[row.user_id].push(row.permission_code);
+    });
+  }
+
   // 월별 자동 집계
   const monthly = {};
   reportPosts.forEach((p) => {
@@ -134,6 +147,7 @@ export default async function ClubDetailPage({ params }) {
           canWriteReport={canWriteReport}
           canWritePost={canWritePost}
           isGuest={isGuest}
+          memberPermissions={memberPermissions}
         />
       </div>
     </div>
