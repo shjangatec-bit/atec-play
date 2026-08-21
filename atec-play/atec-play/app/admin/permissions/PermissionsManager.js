@@ -20,10 +20,22 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
   const router = useRouter();
   const supabase = createClient();
   const [userId, setUserId] = useState(users[0]?.id || "");
-  const [clubId, setClubId] = useState(clubs[0]?.id || "");
   const [saving, setSaving] = useState(false);
 
   const selectedUser = users.find((u) => u.id === userId);
+  const myMemberClubs = (selectedUser?.club_members || [])
+    .filter((m) => m.status === "approved")
+    .map((m) => m.club);
+
+  const [clubId, setClubId] = useState(myMemberClubs[0]?.id || "");
+
+  function handleUserChange(newUserId) {
+    setUserId(newUserId);
+    const newUser = users.find((u) => u.id === newUserId);
+    const newUserClubs = (newUser?.club_members || []).filter((m) => m.status === "approved").map((m) => m.club);
+    setClubId(newUserClubs[0]?.id || "");
+  }
+
   const myPerms = useMemo(() => allPerms.filter((p) => p.user_id === userId), [allPerms, userId]);
 
   function scopeOf(code) {
@@ -115,26 +127,38 @@ async function applyTemplate(name) {
       <div className="grid-2">
         <div className="card">
           <div className="section-title">대상 계정 선택</div>
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} style={{ width: "100%", height: 38, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }}>
+          <select value={userId} onChange={(e) => handleUserChange(e.target.value)} style={{ width: "100%", height: 38, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }}>
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.name} ({u.company?.name})</option>
             ))}
           </select>
-          <div className="empty-note">동호회 단위 권한을 조정할 때는 아래에서 대상 동호회도 선택해주세요.</div>
-          <select value={clubId} onChange={(e) => setClubId(e.target.value)} style={{ width: "100%", height: 38, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }}>
-            {clubs.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div className="empty-note">
+            동호회 단위 권한은 이 계정이 실제로 가입되어 있는 동호회로만 부여할 수 있습니다.
+          </div>
+          {myMemberClubs.length > 0 ? (
+            <select value={clubId} onChange={(e) => setClubId(e.target.value)} style={{ width: "100%", height: 38, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }}>
+              {myMemberClubs.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="empty-note" style={{ padding: "8px 0 0" }}>
+              {selectedUser?.name} 님은 가입된 동호회가 없어 동호회 단위 권한(회장/총무/회원)을 부여할 수 없습니다. 먼저 동호회 가입 승인이 필요합니다.
+            </div>
+          )}
         </div>
         <div className="card">
           <div className="section-title">기본 템플릿 적용</div>
           <div className="row-flex" style={{ gap: 8, flexWrap: "wrap" }}>
-            {Object.keys(TEMPLATES).map((name) => (
-              <button key={name} className="btn-sm btn-outline" disabled={saving} onClick={() => applyTemplate(name)}>
-                {name}
-              </button>
-            ))}
+            {Object.keys(TEMPLATES).map((name) => {
+              const needsClub = ["회장", "총무", "회원"].includes(name);
+              const disabled = saving || (needsClub && myMemberClubs.length === 0);
+              return (
+                <button key={name} className="btn-sm btn-outline" disabled={disabled} onClick={() => applyTemplate(name)} title={disabled && needsClub ? "가입된 동호회가 없어 사용할 수 없습니다" : undefined}>
+                  {name}
+                </button>
+              );
+            })}
           </div>
           <div className="empty-note">템플릿을 누르면 그 템플릿이 정의한 권한 구성으로 정확히 맞춰집니다(더 많이 켜져 있던 항목은 꺼지고, 부족했던 항목은 켜집니다). 이후 아래에서 개별로 조정할 수 있습니다. (회장·총무·회원 템플릿은 선택한 동호회에 이미 가입되어 있는 계정이면 회원현황의 직책 표시도 함께 바뀝니다)</div>
         </div>
@@ -160,7 +184,11 @@ async function applyTemplate(name) {
                     </span>
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <span className={`switch${on ? " on" : ""}`} style={{ cursor: "pointer" }} onClick={() => toggle(p.code)} />
+                    {scope === "club" && myMemberClubs.length === 0 ? (
+                      <span className="empty-note" style={{ padding: 0 }}>가입 동호회 없음</span>
+                    ) : (
+                      <span className={`switch${on ? " on" : ""}`} style={{ cursor: "pointer" }} onClick={() => toggle(p.code)} />
+                    )}
                   </td>
                 </tr>
               );
