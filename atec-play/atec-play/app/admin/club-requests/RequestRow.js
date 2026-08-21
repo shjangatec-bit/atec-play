@@ -22,6 +22,18 @@ export default function RequestRow({ req, reviewerId }) {
           processed_by: reviewerId,
           processed_at: new Date().toISOString(),
         });
+
+        const chairmanCodes = ["CLUB_MEMBER_APPROVE", "CLUB_VIEW", "CLUB_POST_WRITE", "CLUB_REPORT_WRITE", "CLUB_REPORT_VIEW", "CLUB_BUDGET_VIEW"];
+        await supabase.from("user_permissions").upsert(
+          chairmanCodes.map((code) => ({
+            user_id: req.requester_id,
+            club_id: club.id,
+            permission_code: code,
+            granted_by: reviewerId,
+          })),
+          { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true }
+        );
+
         await supabase.from("club_lifecycle_requests").update({
           club_id: club.id,
           status: "approved",
