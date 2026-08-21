@@ -71,8 +71,25 @@ export default function ClubDetailTabs({
     router.refresh();
   }
 
-  const approvedMembers = members.filter((m) => m.status === "approved");
+  async function processWithdrawal(memberId, approve) {
+    if (approve) {
+      const member = members.find((m) => m.id === memberId);
+      await supabase
+        .from("club_members")
+        .update({ status: "withdrawn", withdrawal_requested: false, processed_by: currentUserId, processed_at: new Date().toISOString() })
+        .eq("id", memberId);
+      if (member?.user?.id) {
+        await supabase.from("user_permissions").delete().eq("user_id", member.user.id).eq("club_id", club.id);
+      }
+    } else {
+      await supabase.from("club_members").update({ withdrawal_requested: false }).eq("id", memberId);
+    }
+    router.refresh();
+  }
+
+  const approvedMembers = members.filter((m) => m.status === "approved" && !m.withdrawal_requested);
   const pendingMembers = members.filter((m) => m.status === "pending");
+  const withdrawalMembers = members.filter((m) => m.status === "approved" && m.withdrawal_requested);
   const gallery = boardPosts.filter((p) => p.type === "photo");
   const notices = boardPosts.filter((p) => p.type !== "photo");
 
@@ -87,7 +104,7 @@ export default function ClubDetailTabs({
       </div>
 
       {tab === "members" && !isGuest && (
-        <div className="grid-2">
+        <div className="grid-3" style={{ gridTemplateColumns: "1.3fr 1fr 1fr" }}>
           <div className="card">
             <div className="section-title">회원 현황 ({approvedMembers.length}명)</div>
             <table>
@@ -116,6 +133,29 @@ export default function ClubDetailTabs({
                         <>
                           <button className="btn-sm btn-approve" onClick={() => processMember(m.id, "approved")}>승인</button>
                           <button className="btn-sm btn-reject" onClick={() => processMember(m.id, "rejected")}>반려</button>
+                        </>
+                      ) : (
+                        <span className="empty-note" style={{ padding: 0 }}>처리 권한 없음</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="card">
+            <div className="section-title">탈회 신청 대기</div>
+            {withdrawalMembers.length === 0 && <div className="empty-note">대기 중인 탈회 신청이 없습니다.</div>}
+            <table>
+              <tbody>
+                {withdrawalMembers.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.user?.name} <span className="co-tag">{m.user?.company?.name}</span></td>
+                    <td className="row-flex" style={{ justifyContent: "flex-end" }}>
+                      {canApprove ? (
+                        <>
+                          <button className="btn-sm btn-approve" onClick={() => processWithdrawal(m.id, true)}>승인</button>
+                          <button className="btn-sm btn-reject" onClick={() => processWithdrawal(m.id, false)}>반려</button>
                         </>
                       ) : (
                         <span className="empty-note" style={{ padding: 0 }}>처리 권한 없음</span>

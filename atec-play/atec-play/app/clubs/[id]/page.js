@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import LogoutButton from "@/components/LogoutButton";
 import CoverImageUploader from "./CoverImageUploader";
 import CloseRequestButton from "./CloseRequestButton";
+import WithdrawButton from "./WithdrawButton";
 import ClubDetailTabs from "./ClubDetailTabs";
 
 export default async function ClubDetailPage({ params }) {
@@ -36,7 +37,7 @@ export default async function ClubDetailPage({ params }) {
   if (!isGuest) {
     const { data: m } = await supabase
       .from("club_members")
-      .select("id, role_label, status, applied_at, user:user_id(id, name, company:company_id(name))")
+      .select("id, role_label, status, applied_at, withdrawal_requested, user:user_id(id, name, company:company_id(name))")
       .eq("club_id", clubId)
       .order("applied_at");
     members = m || [];
@@ -71,7 +72,8 @@ export default async function ClubDetailPage({ params }) {
   const canWritePost = !isGuest && hasPermission(permissions, "CLUB_POST_WRITE", { clubId });
 
   // 이 동호회의 승인된 회원인지 (회장/총무/회원 누구나 폐설 신청 가능)
-  const isMemberOfThisClub = !isGuest && members.some((m) => m.status === "approved" && m.user?.id === authUser.id);
+  const myMembership = members.find((m) => m.status === "approved" && m.user?.id === authUser.id);
+  const isMemberOfThisClub = !isGuest && !!myMembership;
   let alreadyRequestedClose = false;
   if (isMemberOfThisClub && club.status === "active") {
     const { data: existingCloseReq } = await supabase
@@ -149,6 +151,9 @@ export default async function ClubDetailPage({ params }) {
           {canApprove && <CoverImageUploader clubId={club.id} />}
           {isMemberOfThisClub && club.status === "active" && (
             <CloseRequestButton clubId={club.id} userId={authUser.id} alreadyRequested={alreadyRequestedClose} />
+          )}
+          {isMemberOfThisClub && (
+            <WithdrawButton memberId={myMembership.id} alreadyRequested={myMembership.withdrawal_requested} />
           )}
         </div>
 
