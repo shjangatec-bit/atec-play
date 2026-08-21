@@ -80,7 +80,13 @@ export default async function OrgPage({ searchParams }) {
               필터 적용
             </button>
           </form>
-          <table>
+          <table style={{ tableLayout: "fixed", width: "100%" }}>
+            <colgroup>
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "38%" }} />
+              <col style={{ width: "42%" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>이름</th>
@@ -96,8 +102,8 @@ export default async function OrgPage({ searchParams }) {
                 const uniqueCodes = [...new Set(perms.map((p) => p.permission_code))];
                 return (
                   <tr key={u.id}>
-                    <td>{u.name}</td>
-                    <td>{u.company?.name}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{u.name}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>{u.company?.name}</td>
                     <td>
                       {approvedClubs.length === 0 && (
                         <span className="empty-note" style={{ padding: 0, display: "inline" }}>
