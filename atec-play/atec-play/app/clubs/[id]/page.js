@@ -4,6 +4,7 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import LogoutButton from "@/components/LogoutButton";
 import CoverImageUploader from "./CoverImageUploader";
+import CloseRequestButton from "./CloseRequestButton";
 import ClubDetailTabs from "./ClubDetailTabs";
 
 export default async function ClubDetailPage({ params }) {
@@ -69,6 +70,20 @@ export default async function ClubDetailPage({ params }) {
   const canWriteReport = !isGuest && hasPermission(permissions, "CLUB_REPORT_WRITE", { clubId });
   const canWritePost = !isGuest && hasPermission(permissions, "CLUB_POST_WRITE", { clubId });
 
+  // 이 동호회의 승인된 회원인지 (회장/총무/회원 누구나 폐설 신청 가능)
+  const isMemberOfThisClub = !isGuest && members.some((m) => m.status === "approved" && m.user?.id === authUser.id);
+  let alreadyRequestedClose = false;
+  if (isMemberOfThisClub && club.status === "active") {
+    const { data: existingCloseReq } = await supabase
+      .from("club_lifecycle_requests")
+      .select("id")
+      .eq("club_id", clubId)
+      .eq("type", "close")
+      .eq("status", "pending")
+      .maybeSingle();
+    alreadyRequestedClose = !!existingCloseReq;
+  }
+
   // 회원 권한 관리 탭용 데이터 (회장/총무만)
   let memberPermissions = {};
   if (canApprove) {
@@ -132,6 +147,9 @@ export default async function ClubDetailPage({ params }) {
             </div>
           </div>
           {canApprove && <CoverImageUploader clubId={club.id} />}
+          {isMemberOfThisClub && club.status === "active" && (
+            <CloseRequestButton clubId={club.id} userId={authUser.id} alreadyRequested={alreadyRequestedClose} />
+          )}
         </div>
 
         <ClubDetailTabs
