@@ -10,7 +10,7 @@ export default function DisburseButton({ clubId, companyId, year, month, attende
 
   async function markPaid() {
     setSaving(true);
-    await supabase.from("club_budget_disbursements").upsert(
+    const { error } = await supabase.from("club_budget_disbursements").upsert(
       {
         club_id: clubId,
         company_id: companyId,
@@ -25,6 +25,10 @@ export default function DisburseButton({ clubId, companyId, year, month, attende
       { onConflict: "club_id,company_id,year,month" }
     );
     setSaving(false);
+    if (error) {
+      alert("지급완료 처리 실패: " + error.message);
+      return;
+    }
     router.refresh();
   }
 
