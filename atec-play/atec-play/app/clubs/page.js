@@ -11,6 +11,7 @@ export default async function ClubsPage({ searchParams }) {
   if (profile?.status !== "approved") redirect("/pending");
 
   const canReactivate = hasPermission(permissions, "CLUB_CLOSE_APPROVE");
+  const canCreateClub = hasPermission(permissions, "CLUB_CREATE_REQUEST");
 
   const supabase = createClient();
   const { data: clubs } = await supabase
@@ -38,7 +39,7 @@ export default async function ClubsPage({ searchParams }) {
             <div className="crumb">홈 / 동호회</div>
             <h1>{searchParams?.mine ? "내 동호회" : "동호회 현황"}</h1>
           </div>
-          {!searchParams?.mine && (
+          {!searchParams?.mine && canCreateClub && (
             <div className="top-actions">
               <a className="btn-sm btn-outline" href="/clubs/new">+ 동호회 개설 신청</a>
             </div>
