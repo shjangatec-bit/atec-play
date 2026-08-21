@@ -5,7 +5,7 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import DisburseButton from "./DisburseButton";
 
-export default async function BudgetPaymentsPage() {
+export default async function BudgetPaymentsPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
   if (profile?.status !== "approved") redirect("/pending");
@@ -13,10 +13,14 @@ export default async function BudgetPaymentsPage() {
 
   const companyId = profile.company_id;
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const year = searchParams?.year ? parseInt(searchParams.year, 10) : now.getFullYear();
+  const month = searchParams?.month ? parseInt(searchParams.month, 10) : now.getMonth() + 1;
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
   const nextMonth = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+
+  const prevMonthDate = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
+  const nextMonthDate = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
 
   const supabase = createClient();
   const { data: reportPosts } = await supabase
@@ -84,13 +88,21 @@ export default async function BudgetPaymentsPage() {
             <div className="crumb">회사 담당 / 지원금 지급 관리</div>
             <h1>지원금 지급 관리</h1>
           </div>
+          <div className="row-flex" style={{ gap: 8 }}>
+            <a className="btn-sm btn-outline" href={`/company/budget-payments?year=${prevMonthDate.y}&month=${prevMonthDate.m}`}>◀ 이전 달</a>
+            <span className="badge badge-brand" style={{ fontSize: 13 }}>{year}년 {month}월</span>
+            {!isCurrentMonth && (
+              <a className="btn-sm btn-outline" href="/company/budget-payments">이번 달로</a>
+            )}
+            <a className="btn-sm btn-outline" href={`/company/budget-payments?year=${nextMonthDate.y}&month=${nextMonthDate.m}`}>다음 달 ▶</a>
+          </div>
         </div>
         <div className="empty-note" style={{ padding: "0 0 16px" }}>
-          로그인한 담당자의 소속회사(<b style={{ color: "var(--ink-2)" }}>{profile.company?.name}</b>) 기준으로, 이번 달 자사 소속 참석자가 있는 동호회만 자동으로 걸러서 보여줍니다.
+          로그인한 담당자의 소속회사(<b style={{ color: "var(--ink-2)" }}>{profile.company?.name}</b>) 기준으로, {month}월 자사 소속 참석자가 있는 동호회만 자동으로 걸러서 보여줍니다.
         </div>
         <div className="grid-3" style={{ marginBottom: 16 }}>
-          <div className="card"><div className="metric-label">이번 달 지급 대상 동호회</div><div className="metric-value">{rows.length}</div></div>
-          <div className="card"><div className="metric-label">이번 달 지원금 합계</div><div className="metric-value">{monthlyTotal.toLocaleString()}</div></div>
+          <div className="card"><div className="metric-label">{month}월 지급 대상 동호회</div><div className="metric-value">{rows.length}</div></div>
+          <div className="card"><div className="metric-label">{month}월 지원금 합계</div><div className="metric-value">{monthlyTotal.toLocaleString()}</div></div>
           <div className="card"><div className="metric-label">지급완료율</div><div className="metric-value">{rows.length ? Math.round((paidCount / rows.length) * 100) : 0}%</div></div>
         </div>
         <div className="card">
@@ -144,7 +156,7 @@ export default async function BudgetPaymentsPage() {
                 </Fragment>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={6}><div className="empty-note">이번 달, 자사 소속 참석자가 있는 동호회가 없습니다.</div></td></tr>
+                <tr><td colSpan={6}><div className="empty-note">{year}년 {month}월, 자사 소속 참석자가 있는 동호회가 없습니다.</div></td></tr>
               )}
             </tbody>
           </table>
