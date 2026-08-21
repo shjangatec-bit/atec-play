@@ -5,15 +5,15 @@ import { createClient } from "@/lib/supabase/client";
 
 const LINKS = [
   { href: "/dashboard", label: "대시보드" },
-  { href: "/org", label: "조직/인원 조회" },
-  { href: "/clubs", label: "동호회" },
+  { href: "/org", label: "동호회원 명단" },
+  { href: "/clubs", label: "동호회 현황" },
 ];
 
 const ADMIN_LINKS = [
   { href: "/admin/accounts", label: "계정 승인" },
   { href: "/admin/permissions", label: "권한 설정" },
-  { href: "/admin/club-requests", label: "동호회 신청 승인" },
-  { href: "/admin/support-rates", label: "지원 단가 설정" },
+  { href: "/admin/club-requests", label: "동호회 개설 승인" },
+  { href: "/admin/support-rates", label: "지원금 설정" },
   { href: "/admin/stats", label: "전체 통계" },
 ];
 
