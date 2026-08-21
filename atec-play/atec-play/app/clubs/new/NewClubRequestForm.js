@@ -19,7 +19,8 @@ export default function NewClubRequestForm({ userId }) {
 
     let fileUrl = null;
     if (file) {
-      const path = `club-requests/${userId}-${Date.now()}-${file.name}`;
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `club-requests/${userId}-${Date.now()}-${safeName}`;
       const { error: upErr } = await supabase.storage.from("club-files").upload(path, file);
       if (upErr) {
         setError("파일 업로드 중 문제가 발생했습니다: " + upErr.message);
