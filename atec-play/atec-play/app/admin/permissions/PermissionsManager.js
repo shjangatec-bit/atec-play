@@ -72,6 +72,18 @@ const ROLE_LABEL_BY_TEMPLATE = { 회장: "회장", 총무: "총무", 회원: "�
 async function applyTemplate(name) {
     setSaving(true);
     const codes = TEMPLATES[name];
+
+    // 템플릿이 다루는 범위의 기존 권한을 먼저 비워서, 이전에 더 많은/다른 권한이 있었어도
+    // 이 템플릿이 정의한 구성과 "정확히" 일치하게 맞춥니다. (추가만 되고 안 빠지던 문제 수정)
+    if (name === "통합관리자") {
+      await supabase.from("user_permissions").delete().eq("user_id", userId).is("club_id", null).is("company_id", null);
+    } else if (name === "지원금담당자") {
+      await supabase.from("user_permissions").delete().eq("user_id", userId).eq("company_id", selectedUser?.company?.id);
+    } else {
+      // 회장/총무/회원 - 선택한 "이 동호회"의 동호회 단위 권한만 초기화 (다른 동호회·전사 권한은 안 건드림)
+      await supabase.from("user_permissions").delete().eq("user_id", userId).eq("club_id", clubId).in("permission_code", CLUB_CODES);
+    }
+
     const rows = codes.map((code) => {
       const scope = scopeOf(code);
       return {
@@ -124,7 +136,7 @@ async function applyTemplate(name) {
               </button>
             ))}
           </div>
-          <div className="empty-note">템플릿 선택 시 해당 항목이 자동 체크됩니다. 이후 아래에서 개별로 조정할 수 있습니다. (회장·총무·회원 템플릿은 선택한 동호회에 이미 가입되어 있는 계정이면 회원현황의 직책 표시도 함께 바뀝니다)</div>
+          <div className="empty-note">템플릿을 누르면 그 템플릿이 정의한 권한 구성으로 정확히 맞춰집니다(더 많이 켜져 있던 항목은 꺼지고, 부족했던 항목은 켜집니다). 이후 아래에서 개별로 조정할 수 있습니다. (회장·총무·회원 템플릿은 선택한 동호회에 이미 가입되어 있는 계정이면 회원현황의 직책 표시도 함께 바뀝니다)</div>
         </div>
       </div>
 
