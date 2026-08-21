@@ -44,20 +44,26 @@ export default function ClubDetailTabs({
     : TABS.filter((t) => t.key !== "permissions" || canApprove);
 
   async function toggleMemberPermission(userId, code, isOn) {
-    if (isOn) {
-      await supabase.from("user_permissions").delete().eq("user_id", userId).eq("club_id", club.id).eq("permission_code", code);
-    } else {
-      await supabase.from("user_permissions").insert({ user_id: userId, club_id: club.id, permission_code: code, granted_by: currentUserId });
+    const { error } = isOn
+      ? await supabase.from("user_permissions").delete().eq("user_id", userId).eq("club_id", club.id).eq("permission_code", code)
+      : await supabase.from("user_permissions").insert({ user_id: userId, club_id: club.id, permission_code: code, granted_by: currentUserId });
+    if (error) {
+      alert("권한 변경 실패: " + error.message);
+      return;
     }
     router.refresh();
   }
 
   async function processMember(memberId, status) {
-    await supabase.from("club_members").update({ status, processed_by: currentUserId, processed_at: new Date().toISOString() }).eq("id", memberId);
+    const { error } = await supabase.from("club_members").update({ status, processed_by: currentUserId, processed_at: new Date().toISOString() }).eq("id", memberId);
+    if (error) {
+      alert("처리 실패: " + error.message);
+      return;
+    }
 
     if (status === "approved") {
       const member = members.find((m) => m.id === memberId);
-      if (member) {
+      if (member?.user?.id) {
         const defaultCodes = ["CLUB_VIEW", "CLUB_POST_WRITE", "CLUB_BUDGET_VIEW"];
         const rows = defaultCodes.map((code) => ({
           user_id: member.user.id,
@@ -74,15 +80,23 @@ export default function ClubDetailTabs({
   async function processWithdrawal(memberId, approve) {
     if (approve) {
       const member = members.find((m) => m.id === memberId);
-      await supabase
+      const { error } = await supabase
         .from("club_members")
         .update({ status: "withdrawn", withdrawal_requested: false, processed_by: currentUserId, processed_at: new Date().toISOString() })
         .eq("id", memberId);
+      if (error) {
+        alert("처리 실패: " + error.message);
+        return;
+      }
       if (member?.user?.id) {
         await supabase.from("user_permissions").delete().eq("user_id", member.user.id).eq("club_id", club.id);
       }
     } else {
-      await supabase.from("club_members").update({ withdrawal_requested: false }).eq("id", memberId);
+      const { error } = await supabase.from("club_members").update({ withdrawal_requested: false }).eq("id", memberId);
+      if (error) {
+        alert("처리 실패: " + error.message);
+        return;
+      }
     }
     router.refresh();
   }
