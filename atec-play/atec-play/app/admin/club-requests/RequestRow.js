@@ -8,12 +8,16 @@ export default function RequestRow({ req, reviewerId }) {
 
   async function approve() {
     if (req.type === "create") {
-      const { data: club } = await supabase
+      const { data: club, error: clubErr } = await supabase
         .from("clubs")
         .insert({ name: req.proposed_name, description: "", status: "active" })
         .select()
         .single();
-      if (club) {
+      if (clubErr || !club) {
+        alert("동호회 생성 실패: " + (clubErr?.message || "알 수 없는 오류"));
+        return;
+      }
+      {
         await supabase.from("club_members").insert({
           club_id: club.id,
           user_id: req.requester_id,
