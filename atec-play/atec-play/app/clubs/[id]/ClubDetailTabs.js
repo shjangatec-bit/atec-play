@@ -482,6 +482,11 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
       {canWrite && (
         <div className="card">
           <div className="section-title">보고서 작성</div>
+          <div className="empty-note" style={{ padding: "0 0 12px" }}>
+            <a href="/forms/동호회_보조금_신청양식.pdf" target="_blank" rel="noreferrer" style={{ color: "var(--brand)" }}>
+              보조금 신청양식 다운로드
+            </a> — 참석자 명단·비용 지출내역을 작성해서 아래 첨부파일에 함께 올려주세요.
+          </div>
           <form onSubmit={submit}>
             <div className="field"><label>제목</label><input value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
             <div className="field"><label>활동일자</label><input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} required /></div>
