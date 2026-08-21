@@ -36,6 +36,10 @@ export default async function PendingPage() {
           <span className="side-dot" />
           운영지침
         </a>
+        <a href="/forms" className="side-link">
+          <span className="side-dot" />
+          양식함
+        </a>
         <div className="side-user">
           <div className="avatar" style={{ background: "var(--gray-bg)", color: "var(--ink-2)" }}>
             {profile?.name?.slice(0, 2) || "게스트"}
