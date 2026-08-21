@@ -32,7 +32,7 @@ export default function CoverImageUploader({ clubId }) {
   }
 
   return (
-    <label className="btn-sm btn-outline" style={{ cursor: "pointer", display: "inline-block" }}>
+    <label className="btn-sm btn-outline" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
       {saving ? "업로드 중..." : "대표사진 변경"}
       <input type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} disabled={saving} />
     </label>
