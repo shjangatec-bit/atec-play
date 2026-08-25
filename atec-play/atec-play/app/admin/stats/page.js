@@ -46,7 +46,7 @@ export default async function StatsPage() {
           <div className="card"><div className="metric-label">전체 임직원</div><div className="metric-value">{users?.length ?? 0}</div></div>
           <div className="card"><div className="metric-label">동호회 가입률</div><div className="metric-value">{((uniqueMembers / totalUsers) * 100).toFixed(1)}%</div></div>
           <div className="card"><div className="metric-label">운영중 동호회</div><div className="metric-value">{activeClubs ?? 0}</div></div>
-          <div className="card"><div className="metric-label">이번 달 지원금완료 합계</div><div className="metric-value">{monthlyTotal.toLocaleString()}</div></div>
+          <div className="card"><div className="metric-label">이번 달 지급완료 합계</div><div className="metric-value">{monthlyTotal.toLocaleString()}</div></div>
         </div>
         <div className="card">
           <div className="section-title">회사별 가입 인원</div>
