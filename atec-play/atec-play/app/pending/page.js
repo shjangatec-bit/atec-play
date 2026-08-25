@@ -17,9 +17,12 @@ export default async function PendingPage() {
 
   const { data: myApplications } = await supabase
     .from("club_members")
-    .select("club_id")
+    .select("club_id, status")
     .eq("user_id", authUser.id);
-  const appliedClubIds = new Set((myApplications || []).map((a) => a.club_id));
+  // 반려/탈회 건은 재신청이 가능해야 하므로, "신청 대기/가입됨" 상태만 이미 신청한 것으로 처리
+  const appliedClubIds = new Set(
+    (myApplications || []).filter((a) => a.status === "pending" || a.status === "approved").map((a) => a.club_id)
+  );
 
   return (
     <div className="app-shell">
