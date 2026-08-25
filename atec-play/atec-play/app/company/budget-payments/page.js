@@ -25,7 +25,9 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const supabase = createClient();
   const { data: reportPosts } = await supabase
     .from("posts")
-    .select("id, title, activity_date, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id))")
+    .select(
+      "id, title, activity_date, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id)), post_attachments(file_url, file_type)"
+    )
     .eq("type", "report")
     .gte("activity_date", monthStart)
     .lt("activity_date", nextMonth);
@@ -41,6 +43,7 @@ export default async function BudgetPaymentsPage({ searchParams }) {
       title: p.title,
       activityDate: p.activity_date,
       attendeeNames: companyAttendees.map((a) => a.user.name),
+      attachments: p.post_attachments || [],
     });
   });
 
@@ -148,6 +151,22 @@ export default async function BudgetPaymentsPage({ searchParams }) {
                         {r.reports.map((rep) => (
                           <div key={rep.postId} style={{ fontSize: 12, color: "var(--ink-2)", padding: "3px 0" }}>
                             <span className="mono">{rep.activityDate}</span> · {rep.title} — 참석: {rep.attendeeNames.join(", ")}
+                            {rep.attachments.length === 0 ? (
+                              <span className="empty-note" style={{ padding: 0, marginLeft: 6 }}>첨부파일 없음</span>
+                            ) : (
+                              rep.attachments.map((a, i) => (
+                                
+                                  key={i}
+                                  href={a.file_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={`badge ${a.file_type === "receipt" ? "badge-red" : "badge-gray"}`}
+                                  style={{ marginLeft: 6 }}
+                                >
+                                  {a.file_type === "receipt" ? "증빙 열기" : "첨부파일 열기"}
+                                </a>
+                              ))
+                            )}
                           </div>
                         ))}
                       </div>
