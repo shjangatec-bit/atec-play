@@ -102,13 +102,18 @@ export default async function ClubDetailPage({ params }) {
     });
   }
 
-  // 월별 자동 집계
-  const monthly = {};
+  // 월별 자동 집계 — 같은 사람이 그 달에 여러 번 참석해도 1명으로만 집계
+  // (지원금 지급 관리 화면의 실제 지급 계산 방식과 동일하게 맞춤)
+  const monthlyAttendeeSets = {};
   reportPosts.forEach((p) => {
     if (!p.activity_date) return;
     const ym = p.activity_date.slice(0, 7);
-    monthly[ym] = (monthly[ym] || 0) + (p.post_attendees?.length || 0);
+    if (!monthlyAttendeeSets[ym]) monthlyAttendeeSets[ym] = new Set();
+    (p.post_attendees || []).forEach((a) => monthlyAttendeeSets[ym].add(a.user_id));
   });
+  const monthly = Object.fromEntries(
+    Object.entries(monthlyAttendeeSets).map(([ym, set]) => [ym, set.size])
+  );
 
   return (
     <div className="app-shell">
