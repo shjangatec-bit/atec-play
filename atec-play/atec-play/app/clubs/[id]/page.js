@@ -23,10 +23,13 @@ export default async function ClubDetailPage({ params }) {
 
   const { data: boardPosts } = await supabase
     .from("posts")
-    .select("id, type, title, content, created_at, author:author_id(name), post_attachments(file_url, file_type)")
+    .select(
+      "id, type, title, content, created_at, author:author_id(name), post_attachments(file_url, file_type), post_comments(id, content, created_at, author:author_id(name)), post_likes(user_id)"
+    )
     .eq("club_id", clubId)
     .in("type", ["notice", "general", "photo"])
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("created_at", { foreignTable: "post_comments", ascending: true });
 
   // 회원현황/활동보고서/지원금 — 게스트에게는 아예 조회하지 않음 (열람 자체를 막기 위함)
   let members = [];
