@@ -57,13 +57,10 @@ export default async function GuidePage() {
               <tr><td style={{ fontWeight: 500 }}>활동일정</td><td>각 동호회별 월별 일정에 따라 모임 활동</td></tr>
               <tr>
                 <td style={{ fontWeight: 500 }}>동호회 지원</td>
-                <td>동호회 활동 참석인원 1인당 2만원 한도로 총 비용의 50%를 지원 (최대 30만원)</td>
+                <td>동호회 활동 참석인원 1인당 정액 지원 (동호회별 단가는 통합관리자 설정, 시스템이 자동 계산)</td>
               </tr>
             </tbody>
           </table>
-          <div className="empty-note" style={{ paddingTop: 10 }}>
-            ※ 본 시스템(ATEC PLAY)의 지원금 자동계산 기준(단가 × 참석인원)은 위 지원 기준을 반영해 동호회별로 설정됩니다.
-          </div>
         </div>
 
         <div className="grid-2" style={{ marginBottom: 14 }}>
