@@ -509,7 +509,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
   const [content, setContent] = useState("");
   const [activityDate, setActivityDate] = useState("");
   const [checked, setChecked] = useState({});
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
@@ -543,22 +543,31 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
       if (attErr) alert("참석자 저장 중 문제가 발생했습니다: " + attErr.message);
     }
 
-    if (file) {
-      const path = `${clubId}/${post.id}/${Date.now()}-${safeName(file.name)}`;
-      const { error: upErr } = await supabase.storage.from("club-files").upload(path, file);
-      if (upErr) {
-        alert("첨부파일 업로드 실패: " + upErr.message);
-      } else {
+    if (files.length > 0) {
+      // 파일마다 확장자로 증빙(pdf/jpg/jpeg/png)/첨부파일(그 외) 자동 구분해서 각각 저장
+      // 이름규칙: {동호회id}/{보고서id}/{업로드시각}-{순번}-{원본파일명(특수문자 제거)}
+      const failed = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const path = `${clubId}/${post.id}/${Date.now()}-${i}-${safeName(f.name)}`;
+        const { error: upErr } = await supabase.storage.from("club-files").upload(path, f);
+        if (upErr) {
+          failed.push(`${f.name} (업로드 실패: ${upErr.message})`);
+          continue;
+        }
         const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
-        const fileType = /\.(pdf|jpg|jpeg|png)$/i.test(file.name) ? "receipt" : "document";
+        const fileType = /\.(pdf|jpg|jpeg|png)$/i.test(f.name) ? "receipt" : "document";
         const { error: attachErr } = await supabase
           .from("post_attachments")
           .insert({ post_id: post.id, file_url: pub.publicUrl, file_type: fileType });
-        if (attachErr) alert("첨부파일 정보 저장 실패: " + attachErr.message);
+        if (attachErr) failed.push(`${f.name} (저장 실패: ${attachErr.message})`);
+      }
+      if (failed.length > 0) {
+        alert("보고서는 등록됐지만 다음 파일은 첨부되지 않았습니다:\n" + failed.join("\n"));
       }
     }
 
-    setTitle(""); setContent(""); setActivityDate(""); setChecked({}); setFile(null);
+    setTitle(""); setContent(""); setActivityDate(""); setChecked({}); setFiles([]);
     setSaving(false);
     alert("보고서가 등록되었습니다.");
     router.refresh();
@@ -626,8 +635,13 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
               </div>
             </div>
             <div className="field">
-              <label>첨부파일 (양식파일/증빙)</label>
-              <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              <label>첨부파일 (양식파일/증빙, 여러 개 선택 가능)</label>
+              <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+              {files.length > 0 && (
+                <div className="empty-note" style={{ padding: "4px 0 0" }}>
+                  선택된 파일 {files.length}개 — {files.map((f) => f.name).join(", ")}
+                </div>
+              )}
             </div>
             <button className="btn btn-primary" disabled={saving}>{saving ? "등록 중..." : "보고서 등록"}</button>
           </form>
