@@ -30,9 +30,16 @@ export default function AccountRow({ user, approverId }) {
         company_id: null,
         granted_by: approverId,
       }));
-      await supabase
+      const { error: permErr } = await supabase
         .from("user_permissions")
         .upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
+      if (permErr) {
+        alert(
+          "계정은 승인됐지만 기본 권한(동호회 개설/폐설 신청) 부여에 실패했습니다: " +
+            permErr.message +
+            "\n권한 설정 화면에서 수동으로 부여해 주세요."
+        );
+      }
     }
     router.refresh();
   }
