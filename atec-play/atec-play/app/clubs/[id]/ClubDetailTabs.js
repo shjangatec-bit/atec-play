@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -295,17 +295,31 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isG
   const [commentDrafts, setCommentDrafts] = useState({});
   const [commentSaving, setCommentSaving] = useState({});
   const [likeSaving, setLikeSaving] = useState({});
+  const likeLockRef = useRef({});
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
   }
 
   async function toggleLike(postId, alreadyLiked) {
-    if (isGuest || likeSaving[postId]) return;
+    // useState는 반영이 비동기라 초고속 연타(하트 버튼 습관적 더블클릭 등)를 못 막는 경우가 있어,
+    // ref로 즉시(동기적으로) 잠급니다.
+    if (isGuest || likeLockRef.current[postId]) return;
+    likeLockRef.current[postId] = true;
     setLikeSaving((s) => ({ ...s, [postId]: true }));
-    const { error } = alreadyLiked
-      ? await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", currentUserId)
-      : await supabase.from("post_likes").insert({ post_id: postId, user_id: currentUserId });
+
+    let error;
+    if (alreadyLiked) {
+      ({ error } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", currentUserId));
+    } else {
+      ({ error } = await supabase.from("post_likes").insert({ post_id: postId, user_id: currentUserId }));
+      // 화면이 최신 상태를 못 따라와서 이미 좋아요된 걸 또 누른 경우, 에러 대신 좋아요 취소로 자동 처리
+      if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) {
+        ({ error } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", currentUserId));
+      }
+    }
+
+    likeLockRef.current[postId] = false;
     setLikeSaving((s) => ({ ...s, [postId]: false }));
     if (error) {
       alert("좋아요 처리 실패: " + error.message);
