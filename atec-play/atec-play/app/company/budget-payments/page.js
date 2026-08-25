@@ -155,7 +155,7 @@ export default async function BudgetPaymentsPage({ searchParams }) {
                               <span className="empty-note" style={{ padding: 0, marginLeft: 6 }}>첨부파일 없음</span>
                             ) : (
                               rep.attachments.map((a, i) => (
-                                
+                                <a
                                   key={i}
                                   href={a.file_url}
                                   target="_blank"
