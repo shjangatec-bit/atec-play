@@ -71,7 +71,14 @@ export default function ClubDetailTabs({
           permission_code: code,
           granted_by: currentUserId,
         }));
-        await supabase.from("user_permissions").upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
+        const { error: permErr } = await supabase.from("user_permissions").upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
+        if (permErr) {
+          alert(
+            "가입 승인은 됐지만 기본 권한 부여에 실패했습니다: " +
+              permErr.message +
+              "\n권한 설정 화면에서 회원 템플릿을 다시 적용해 주세요."
+          );
+        }
       }
     }
     router.refresh();
@@ -89,7 +96,14 @@ export default function ClubDetailTabs({
         return;
       }
       if (member?.user?.id) {
-        await supabase.from("user_permissions").delete().eq("user_id", member.user.id).eq("club_id", club.id);
+        const { error: permErr } = await supabase.from("user_permissions").delete().eq("user_id", member.user.id).eq("club_id", club.id);
+        if (permErr) {
+          alert(
+            "탈회 처리는 됐지만 이 동호회 관련 권한 회수에 실패했습니다: " +
+              permErr.message +
+              "\n권한 설정 화면에서 수동으로 정리해 주세요."
+          );
+        }
       }
     } else {
       const { error } = await supabase.from("club_members").update({ withdrawal_requested: false }).eq("id", memberId);
@@ -183,8 +197,8 @@ export default function ClubDetailTabs({
         </div>
       )}
 
-      {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="notice" />}
-      {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="photo" isGallery />}
+      {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="notice" isGuest={isGuest} />}
+      {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="photo" isGallery isGuest={isGuest} />}
 
       {tab === "report" && !isGuest && (
         <ReportTab
@@ -270,7 +284,7 @@ export default function ClubDetailTabs({
   );
 }
 
-function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
+function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isGuest }) {
   const router = useRouter();
   const supabase = createClient();
   const [title, setTitle] = useState("");
@@ -278,9 +292,40 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [commentSaving, setCommentSaving] = useState({});
+  const [likeSaving, setLikeSaving] = useState({});
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
+  async function toggleLike(postId, alreadyLiked) {
+    if (isGuest || likeSaving[postId]) return;
+    setLikeSaving((s) => ({ ...s, [postId]: true }));
+    const { error } = alreadyLiked
+      ? await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", currentUserId)
+      : await supabase.from("post_likes").insert({ post_id: postId, user_id: currentUserId });
+    setLikeSaving((s) => ({ ...s, [postId]: false }));
+    if (error) {
+      alert("좋아요 처리 실패: " + error.message);
+      return;
+    }
+    router.refresh();
+  }
+
+  async function submitComment(postId) {
+    const text = (commentDrafts[postId] || "").trim();
+    if (!text || commentSaving[postId]) return;
+    setCommentSaving((s) => ({ ...s, [postId]: true }));
+    const { error } = await supabase.from("post_comments").insert({ post_id: postId, author_id: currentUserId, content: text });
+    setCommentSaving((s) => ({ ...s, [postId]: false }));
+    if (error) {
+      alert("댓글 등록 실패: " + error.message);
+      return;
+    }
+    setCommentDrafts((d) => ({ ...d, [postId]: "" }));
+    router.refresh();
   }
 
   async function submit(e) {
@@ -378,13 +423,55 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery }) {
     <div className="grid-2">
       <div className="card">
         <div className="section-title">게시판</div>
-        {posts.map((p) => (
-          <div className="post-item" key={p.id}>
-            <div className="ptitle">{p.type === "notice" && <span className="pin">[공지] </span>}{p.title}</div>
-            <div className="pmeta"><span>{p.author?.name}</span><span className="mono">{new Date(p.created_at).toLocaleDateString("ko-KR")}</span></div>
-            {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6 }}>{p.content}</div>}
-          </div>
-        ))}
+        {posts.map((p) => {
+          const likes = p.post_likes || [];
+          const likedByMe = likes.some((l) => l.user_id === currentUserId);
+          const comments = p.post_comments || [];
+          return (
+            <div className="post-item" key={p.id}>
+              <div className="ptitle">{p.type === "notice" && <span className="pin">[공지] </span>}{p.title}</div>
+              <div className="pmeta"><span>{p.author?.name}</span><span className="mono">{new Date(p.created_at).toLocaleDateString("ko-KR")}</span></div>
+              {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6 }}>{p.content}</div>}
+
+              <div className="row-flex" style={{ marginTop: 8, gap: 10, alignItems: "center" }}>
+                <button
+                  className={`btn-sm ${likedByMe ? "btn-approve" : "btn-outline"}`}
+                  onClick={() => toggleLike(p.id, likedByMe)}
+                  disabled={isGuest || likeSaving[p.id]}
+                  title={isGuest ? "계정 승인 후 이용 가능합니다" : undefined}
+                >
+                  👍 좋아요{likes.length > 0 ? ` ${likes.length}` : ""}
+                </button>
+                <span className="co-tag">댓글 {comments.length}개</span>
+              </div>
+
+              {comments.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                  {comments.map((c) => (
+                    <div key={c.id} style={{ fontSize: 12.5, padding: "3px 0" }}>
+                      <b>{c.author?.name}</b> <span style={{ color: "var(--ink-2)" }}>{c.content}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!isGuest && (
+                <div className="row-flex" style={{ marginTop: 8, gap: 6 }}>
+                  <input
+                    placeholder="댓글을 입력하세요"
+                    value={commentDrafts[p.id] || ""}
+                    onChange={(e) => setCommentDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === "Enter") submitComment(p.id); }}
+                    style={{ flex: 1, height: 32, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px", fontSize: 12.5 }}
+                  />
+                  <button className="btn-sm btn-outline" onClick={() => submitComment(p.id)} disabled={commentSaving[p.id]}>
+                    {commentSaving[p.id] ? "등록 중..." : "등록"}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
         {posts.length === 0 && <div className="empty-note">등록된 게시글이 없습니다.</div>}
       </div>
       {canWrite && (
