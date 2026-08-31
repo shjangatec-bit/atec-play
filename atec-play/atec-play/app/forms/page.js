@@ -5,6 +5,11 @@ import LogoutButton from "@/components/LogoutButton";
 
 const FORM_FILES = [
   {
+    title: "사용자 매뉴얼",
+    description: "회원가입부터 회장·총무, 통합관리자, 지원금 담당자 기능까지 화면별 사용법을 정리한 안내서입니다.",
+    href: "/ATEC_PLAY_사용자매뉴얼.pdf",
+  },
+  {
     title: "사내 동호회 신설·운영 지침",
     description: "동호회 가입, 신설, 지원금 신청/지급 절차 전체 안내 문서입니다.",
     href: "/동호회_신설_운영_지침.pdf",
