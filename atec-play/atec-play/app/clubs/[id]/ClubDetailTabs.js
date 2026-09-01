@@ -197,8 +197,8 @@ export default function ClubDetailTabs({
         </div>
       )}
 
-      {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="notice" isGuest={isGuest} />}
-      {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} type="photo" isGallery isGuest={isGuest} />}
+      {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} canApprove={canApprove} type="notice" isGuest={isGuest} />}
+      {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} canApprove={canApprove} type="photo" isGallery isGuest={isGuest} />}
 
       {tab === "report" && !isGuest && (
         <ReportTab
@@ -284,7 +284,7 @@ export default function ClubDetailTabs({
   );
 }
 
-function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isGuest }) {
+function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, isGallery, isGuest }) {
   const router = useRouter();
   const supabase = createClient();
   const [title, setTitle] = useState("");
@@ -295,10 +295,48 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isG
   const [commentDrafts, setCommentDrafts] = useState({});
   const [commentSaving, setCommentSaving] = useState({});
   const [likeSaving, setLikeSaving] = useState({});
+  const [deleting, setDeleting] = useState({});
   const likeLockRef = useRef({});
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
+  // Supabase public URL에서 스토리지 상 실제 경로만 뽑아냅니다. (첨부파일도 같이 지우기 위함)
+  function storagePathFromUrl(url) {
+    if (!url) return null;
+    const marker = "/club-files/";
+    const idx = url.indexOf(marker);
+    if (idx === -1) return null;
+    try {
+      return decodeURIComponent(url.slice(idx + marker.length));
+    } catch {
+      return url.slice(idx + marker.length);
+    }
+  }
+
+  // 삭제 가능 여부: 글쓴이 본인이거나, 이 동호회의 가입/탈회 승인 권한(회장·총무·통합관리자)이 있으면 가능
+  function canDeletePost(post) {
+    return post.author_id === currentUserId || canApprove;
+  }
+
+  async function deletePost(post) {
+    if (!confirm(`"${post.title}"${isGallery ? " 사진을" : " 글을"} 삭제할까요? 삭제하면 되돌릴 수 없습니다.`)) return;
+    setDeleting((d) => ({ ...d, [post.id]: true }));
+
+    const paths = (post.post_attachments || []).map((a) => storagePathFromUrl(a.file_url)).filter(Boolean);
+    if (paths.length > 0) {
+      await supabase.storage.from("club-files").remove(paths);
+      // 스토리지 파일 삭제가 실패해도(권한 등) 게시글 삭제는 계속 진행합니다. 최악의 경우 안 쓰는 파일만 남습니다.
+    }
+
+    const { error } = await supabase.from("posts").delete().eq("id", post.id);
+    setDeleting((d) => ({ ...d, [post.id]: false }));
+    if (error) {
+      alert("삭제 실패: " + error.message);
+      return;
+    }
+    router.refresh();
   }
 
   async function toggleLike(postId, alreadyLiked) {
@@ -383,6 +421,7 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isG
         <div className="gallery-grid">
           {posts.map((p) => {
             const photoUrl = p.post_attachments?.[0]?.file_url;
+            const canDelete = canDeletePost(p);
             return (
               <div
                 className="gph"
@@ -390,10 +429,26 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isG
                 title={p.title}
                 onClick={() => photoUrl && setLightbox({ url: photoUrl, title: p.title })}
                 style={{
+                  position: "relative",
                   cursor: photoUrl ? "pointer" : "default",
                   ...(photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
                 }}
-              />
+              >
+                {canDelete && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deletePost(p); }}
+                    disabled={deleting[p.id]}
+                    title="사진 삭제"
+                    style={{
+                      position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: "50%",
+                      border: "none", background: "rgba(20,24,31,0.65)", color: "#fff", fontSize: 12,
+                      lineHeight: "22px", textAlign: "center", cursor: "pointer", padding: 0,
+                    }}
+                  >
+                    {deleting[p.id] ? "…" : "✕"}
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -457,6 +512,16 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, type, isGallery, isG
                   👍 좋아요{likes.length > 0 ? ` ${likes.length}` : ""}
                 </button>
                 <span className="co-tag">댓글 {comments.length}개</span>
+                {canDeletePost(p) && (
+                  <button
+                    className="btn-sm btn-outline"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => deletePost(p)}
+                    disabled={deleting[p.id]}
+                  >
+                    {deleting[p.id] ? "삭제 중..." : "삭제"}
+                  </button>
+                )}
               </div>
 
               {comments.length > 0 && (
