@@ -63,6 +63,10 @@ export default function Sidebar({ profile, permissions, active }) {
         <span className="side-dot" />
         내 동호회
       </a>
+      <a href="/account" className={`side-link${active === "/account" ? " active" : ""}`}>
+        <span className="side-dot" />
+        비밀번호 변경
+      </a>
       {isAdmin && (
         <>
           <div className="side-section">관리자</div>
