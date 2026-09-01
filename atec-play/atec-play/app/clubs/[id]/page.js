@@ -24,7 +24,7 @@ export default async function ClubDetailPage({ params }) {
   const { data: boardPosts } = await supabase
     .from("posts")
     .select(
-      "id, type, title, content, created_at, author:author_id(name), post_attachments(file_url, file_type), post_comments(id, content, created_at, author:author_id(name)), post_likes(user_id)"
+      "id, type, title, content, created_at, author_id, author:author_id(name), post_attachments(id, file_url, file_type), post_comments(id, content, created_at, author:author_id(name)), post_likes(user_id)"
     )
     .eq("club_id", clubId)
     .in("type", ["notice", "general", "photo"])
