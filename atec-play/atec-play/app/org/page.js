@@ -13,26 +13,23 @@ export default async function OrgPage({ searchParams }) {
   const viewAll = hasPermission(permissions, "ORG_VIEW_ALL");
   const viewCompanyOnly = hasPermission(permissions, "ORG_VIEW_COMPANY", { companyId: profile.company_id });
 
-  // 회장/총무: 본인이 회장·총무로 있는 동호회 목록
-  const { data: ledMembers } = await supabase
+  // 회장/총무/일반 회원 모두: 본인이 가입(승인)된 동호회 목록
+  const { data: memberRows } = await supabase
     .from("club_members")
-    .select("club_id, club:club_id(id, name)")
+    .select("club_id, role_label, club:club_id(id, name)")
     .eq("user_id", authUser.id)
-    .eq("status", "approved")
-    .in("role_label", ["회장", "총무"]);
-  const ledClubs = (ledMembers || []).map((m) => m.club);
-  const ledClubIds = ledClubs.map((c) => c.id);
-  const viewMyClubsOnly = !viewAll && !viewCompanyOnly && ledClubIds.length > 0;
-
-  if (!viewAll && !viewCompanyOnly && !viewMyClubsOnly) redirect("/dashboard");
+    .eq("status", "approved");
+  const myClubs = (memberRows || []).map((m) => m.club);
+  const myClubIds = myClubs.map((c) => c.id);
+  const viewMyClubsOnly = !viewAll && !viewCompanyOnly;
 
   const { data: companies } = await supabase.from("companies").select("id, name").order("name");
   const { data: allClubs } = await supabase.from("clubs").select("id, name").order("name");
   const { data: permMaster } = await supabase.from("permissions").select("code, name");
   const permNameMap = Object.fromEntries((permMaster || []).map((p) => [p.code, p.name]));
 
-  // 회장/총무 모드에서는 동호회 필터 선택지를 본인이 관리하는 동호회로 제한
-  const clubOptions = viewMyClubsOnly ? ledClubs : allClubs;
+  // 회장/총무/일반 회원 모드에서는 동호회 필터 선택지를 본인이 가입한 동호회로 제한
+  const clubOptions = viewMyClubsOnly ? myClubs : allClubs;
 
   let query = supabase
     .from("users")
@@ -48,12 +45,12 @@ export default async function OrgPage({ searchParams }) {
   const { data: users } = await query;
 
   let clubFilter = searchParams?.club || "";
-  if (viewMyClubsOnly && clubFilter && !ledClubIds.includes(clubFilter)) clubFilter = ""; // 본인 관리 동호회 외 접근 차단
+  if (viewMyClubsOnly && clubFilter && !myClubIds.includes(clubFilter)) clubFilter = ""; // 본인 가입 동호회 외 접근 차단
 
   let filteredUsers = users || [];
   if (viewMyClubsOnly) {
-    // 본인이 관리하는 동호회(들)의 회원만
-    const targetClubIds = clubFilter ? [clubFilter] : ledClubIds;
+    // 본인이 가입한 동호회(들)의 회원만
+    const targetClubIds = clubFilter ? [clubFilter] : myClubIds;
     filteredUsers = filteredUsers.filter((u) =>
       u.club_members?.some((m) => m.status === "approved" && targetClubIds.includes(m.club?.id))
     );
@@ -63,7 +60,8 @@ export default async function OrgPage({ searchParams }) {
     );
   }
 
-  const heading = viewAll ? "전체 인원" : viewCompanyOnly ? "소속회사 인원" : "내가 관리하는 동호회 인원";
+  const heading = viewAll ? "전체 인원" : viewCompanyOnly ? "소속회사 인원" : "내 동호회 인원";
+  const noClubJoined = viewMyClubsOnly && myClubIds.length === 0;
 
   return (
     <div className="app-shell">
@@ -81,6 +79,15 @@ export default async function OrgPage({ searchParams }) {
             <div className="metric-value">{filteredUsers.length}</div>
           </div>
         </div>
+        {noClubJoined ? (
+          <div className="card">
+            <div className="empty-note">
+              아직 가입한 동호회가 없습니다. 동호회에 가입하면 그 동호회 회원 명단을 여기서 볼 수 있어요.
+              <br />
+              <a href="/clubs" style={{ color: "var(--brand)" }}>동호회 목록 보러가기 →</a>
+            </div>
+          </div>
+        ) : (
         <div className="card">
           <form className="filter-row" method="get">
             {viewAll ? (
@@ -95,10 +102,10 @@ export default async function OrgPage({ searchParams }) {
             ) : viewCompanyOnly ? (
               <span className="badge badge-brand">{profile.company?.name} 소속만 표시 중</span>
             ) : (
-              <span className="badge badge-brand">내가 관리하는 동호회만 표시 중</span>
+              <span className="badge badge-brand">내가 가입한 동호회만 표시 중</span>
             )}
             <select name="club" defaultValue={clubFilter}>
-              <option value="">{viewMyClubsOnly ? "전체 (관리하는 동호회 모두)" : "전체 동호회"}</option>
+              <option value="">{viewMyClubsOnly ? "전체 (가입한 동호회 모두)" : "전체 동호회"}</option>
               {clubOptions?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -167,6 +174,7 @@ export default async function OrgPage({ searchParams }) {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );
