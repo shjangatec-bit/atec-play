@@ -20,11 +20,18 @@ export default function CoverImageUploader({ clubId }) {
       alert("이미지 업로드 실패: " + upErr.message);
       return;
     }
-    const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
-    const { error: updErr } = await supabase.from("clubs").update({ cover_image_url: pub.publicUrl }).eq("id", clubId);
+    const { data: signed, error: signErr } = await supabase.storage
+      .from("club-files")
+      .createSignedUrl(path, 31536000);
+    if (signErr || !signed) {
+      setSaving(false);
+      alert("이미지 주소 생성 실패: " + (signErr?.message || ""));
+      return;
+    }
+    const { error: updErr } = await supabase.from("clubs").update({ cover_image_url: signed.signedUrl }).eq("id", clubId);
     setSaving(false);
     if (updErr) {
-      alert("대표사진 정보 저장 실패: " + updErr.message + " (07_add_club_cover_image.sql을 실행하셨는지 확인해주세요)");
+      alert("대표사진 정보 저장 실패: " + updErr.message);
       return;
     }
     alert("대표사진이 변경되었습니다.");
