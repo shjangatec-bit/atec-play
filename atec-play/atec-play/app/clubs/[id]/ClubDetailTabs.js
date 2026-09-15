@@ -3,6 +3,8 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const SIGNED_URL_TTL = 31536000;
+
 const TABS = [
   { key: "members", label: "회원 현황" },
   { key: "board", label: "게시판" },
@@ -302,17 +304,23 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
   }
 
-  // Supabase public URL에서 스토리지 상 실제 경로만 뽑아냅니다. (첨부파일도 같이 지우기 위함)
+  // 저장된 파일 주소에서 스토리지 상 실제 경로만 뽑아냅니다. (첨부파일도 같이 지우기 위함)
   function storagePathFromUrl(url) {
     if (!url) return null;
-    const marker = "/club-files/";
-    const idx = url.indexOf(marker);
-    if (idx === -1) return null;
-    try {
-      return decodeURIComponent(url.slice(idx + marker.length));
-    } catch {
-      return url.slice(idx + marker.length);
+    const markers = ["/club-files/", "/object/sign/club-files/", "/object/public/club-files/"];
+    for (const marker of markers) {
+      const idx = url.indexOf(marker);
+      if (idx === -1) continue;
+      let rest = url.slice(idx + marker.length);
+      const q = rest.indexOf("?");
+      if (q !== -1) rest = rest.slice(0, q);
+      try {
+        return decodeURIComponent(rest);
+      } catch {
+        return rest;
+      }
     }
+    return null;
   }
 
   // 삭제 가능 여부: 글쓴이 본인이거나, 이 동호회의 가입/탈회 승인 권한(회장·총무·통합관리자)이 있으면 가능
@@ -402,9 +410,13 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
       if (upErr) {
         alert("사진 업로드 실패: " + upErr.message);
       } else {
-        const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
-        const { error: attachErr } = await supabase.from("post_attachments").insert({ post_id: post.id, file_url: pub.publicUrl, file_type: "photo" });
-        if (attachErr) alert("사진 정보 저장 실패: " + attachErr.message);
+        const { data: signed, error: signErr } = await supabase.storage.from("club-files").createSignedUrl(path, SIGNED_URL_TTL);
+        if (signErr || !signed) {
+          alert("사진 주소 생성 실패: " + (signErr?.message || ""));
+        } else {
+          const { error: attachErr } = await supabase.from("post_attachments").insert({ post_id: post.id, file_url: signed.signedUrl, file_type: "photo" });
+          if (attachErr) alert("사진 정보 저장 실패: " + attachErr.message);
+        }
       }
     }
     setTitle("");
@@ -620,11 +632,15 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
           failed.push(`${f.name} (업로드 실패: ${upErr.message})`);
           continue;
         }
-        const { data: signed } = await supabase.storage.from("club-files").createSignedUrl(path, 31536000);
+        const { data: signed, error: signErr } = await supabase.storage.from("club-files").createSignedUrl(path, SIGNED_URL_TTL);
+        if (signErr || !signed) {
+          failed.push(`${f.name} (주소 생성 실패: ${signErr?.message || ""})`);
+          continue;
+        }
         const fileType = /\.(pdf|jpg|jpeg|png)$/i.test(f.name) ? "receipt" : "document";
         const { error: attachErr } = await supabase
           .from("post_attachments")
-          .insert({ post_id: post.id, file_url: signed?.signedUrl, file_type: fileType });
+          .insert({ post_id: post.id, file_url: signed.signedUrl, file_type: fileType });
         if (attachErr) failed.push(`${f.name} (저장 실패: ${attachErr.message})`);
       }
       if (failed.length > 0) {
