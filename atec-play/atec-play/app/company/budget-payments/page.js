@@ -5,6 +5,10 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import DisburseButton from "./DisburseButton";
 
+const PER_PERSON_CAP = 30000;
+const MONTHLY_CLUB_CAP = 500000;
+const EXPENSE_RATIO = 0.5;
+
 export default async function BudgetPaymentsPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -23,10 +27,12 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const nextMonthDate = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
 
   const supabase = createClient();
+  // 동호회 전체 기준으로 한도를 먼저 계산해야 하므로, 자사 참석자만이 아니라
+  // 그 달 모든 활동보고서와 전체 참석자·전체 비용을 함께 가져옵니다.
   const { data: reportPosts } = await supabase
     .from("posts")
     .select(
-      "id, title, activity_date, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id)), post_attachments(file_url, file_type)"
+      "id, title, activity_date, expense_amount, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id)), post_attachments(file_url, file_type)"
     )
     .eq("type", "report")
     .gte("activity_date", monthStart)
@@ -34,24 +40,36 @@ export default async function BudgetPaymentsPage({ searchParams }) {
 
   const byClub = {};
   (reportPosts || []).forEach((p) => {
-    const companyAttendees = (p.post_attendees || []).filter((a) => a.user?.company_id === companyId);
-    if (companyAttendees.length === 0) return;
-    if (!byClub[p.club_id]) byClub[p.club_id] = { clubName: p.club?.name, attendees: new Map(), reports: [] };
-    companyAttendees.forEach((a) => byClub[p.club_id].attendees.set(a.user_id, a.user.name));
-    byClub[p.club_id].reports.push({
+    if (!byClub[p.club_id]) {
+      byClub[p.club_id] = {
+        clubName: p.club?.name,
+        allAttendees: new Set(),
+        myAttendees: new Map(),
+        expense: 0,
+        reports: [],
+      };
+    }
+    const c = byClub[p.club_id];
+    c.expense += Number(p.expense_amount) || 0;
+    (p.post_attendees || []).forEach((a) => {
+      c.allAttendees.add(a.user_id);
+      if (a.user?.company_id === companyId) c.myAttendees.set(a.user_id, a.user.name);
+    });
+    const myNames = (p.post_attendees || [])
+      .filter((a) => a.user?.company_id === companyId)
+      .map((a) => a.user.name);
+    c.reports.push({
       postId: p.id,
       title: p.title,
       activityDate: p.activity_date,
-      attendeeNames: companyAttendees.map((a) => a.user.name),
+      expense: Number(p.expense_amount) || 0,
+      attendeeNames: myNames,
       attachments: p.post_attachments || [],
     });
   });
 
-  const clubIds = Object.keys(byClub);
-  const { data: rates } = clubIds.length
-    ? await supabase.from("club_support_rates").select("club_id, unit_amount").in("club_id", clubIds)
-    : { data: [] };
-  const rateMap = Object.fromEntries((rates || []).map((r) => [r.club_id, r.unit_amount]));
+  // 자사 소속 참석자가 한 명도 없는 동호회는 이 화면에 나타나지 않습니다.
+  const clubIds = Object.keys(byClub).filter((id) => byClub[id].myAttendees.size > 0);
 
   const { data: existing } = clubIds.length
     ? await supabase
@@ -65,17 +83,31 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const existingMap = Object.fromEntries((existing || []).map((e) => [e.club_id, e]));
 
   const rows = clubIds.map((clubId) => {
-    const attendeeCount = byClub[clubId].attendees.size;
-    const unitAmount = rateMap[clubId] || 0;
+    const c = byClub[clubId];
+    const totalCount = c.allAttendees.size;
+    const myCount = c.myAttendees.size;
+
+    // 1단계 — 동호회 전체 지급액 (비용 50% / 인원×3만원 / 50만원 중 최솟값)
+    const byExpense = Math.floor(c.expense * EXPENSE_RATIO);
+    const byHead = totalCount * PER_PERSON_CAP;
+    const clubTotal = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
+
+    // 2단계 — 자사 참석인원 비율만큼 배분
+    const myAmount = totalCount > 0 ? Math.floor((clubTotal * myCount) / totalCount) : 0;
+
     return {
       clubId,
-      clubName: byClub[clubId].clubName,
-      attendeeNames: [...byClub[clubId].attendees.values()],
-      attendeeCount,
-      unitAmount,
-      amount: attendeeCount * unitAmount,
+      clubName: c.clubName,
+      expense: c.expense,
+      totalCount,
+      myCount,
+      attendeeNames: [...c.myAttendees.values()],
+      byExpense,
+      byHead,
+      clubTotal,
+      amount: myAmount,
       disbursement: existingMap[clubId],
-      reports: byClub[clubId].reports,
+      reports: c.reports,
     };
   });
 
@@ -100,27 +132,39 @@ export default async function BudgetPaymentsPage({ searchParams }) {
             <a className="btn-sm btn-outline" href={`/company/budget-payments?year=${nextMonthDate.y}&month=${nextMonthDate.m}`}>다음 달 ▶</a>
           </div>
         </div>
-        <div className="empty-note" style={{ padding: "0 0 16px" }}>
+        <div className="empty-note" style={{ padding: "0 0 16px", lineHeight: 1.8 }}>
           로그인한 담당자의 소속회사(<b style={{ color: "var(--ink-2)" }}>{profile.company?.name}</b>) 기준으로, {month}월 자사 소속 참석자가 있는 동호회만 자동으로 걸러서 보여줍니다.
+          <br />
+          지원금은 동호회 단위로 <b style={{ color: "var(--ink-2)" }}>활동비용의 50% · 참석 1인당 3만원 · 월 50만원</b> 중 가장 작은 금액을 먼저 구한 뒤, 자사 참석인원 비율만큼 배분됩니다.
         </div>
         <div className="grid-3" style={{ marginBottom: 16 }}>
           <div className="card"><div className="metric-label">{month}월 지급 대상 동호회</div><div className="metric-value">{rows.length}</div></div>
-          <div className="card"><div className="metric-label">{month}월 지원금 합계</div><div className="metric-value">{monthlyTotal.toLocaleString()}</div></div>
+          <div className="card"><div className="metric-label">{month}월 자사 부담액</div><div className="metric-value">{monthlyTotal.toLocaleString()}</div></div>
           <div className="card"><div className="metric-label">지급완료율</div><div className="metric-value">{rows.length ? Math.round((paidCount / rows.length) * 100) : 0}%</div></div>
         </div>
         <div className="card">
           <table>
             <thead>
-              <tr><th>동호회</th><th>자사 소속 참석자</th><th style={{ textAlign: "right" }}>단가</th><th style={{ textAlign: "right" }}>지원금액</th><th>상태</th><th></th></tr>
+              <tr>
+                <th>동호회</th>
+                <th>자사 소속 참석자</th>
+                <th style={{ textAlign: "right" }}>동호회 지급액</th>
+                <th style={{ textAlign: "right" }}>자사 부담액</th>
+                <th>상태</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <Fragment key={r.clubId}>
                   <tr key={r.clubId}>
                     <td>{r.clubName}</td>
-                    <td>{r.attendeeNames.map((n) => <span className="badge badge-gray" key={n} style={{ marginRight: 4 }}>{n}</span>)}</td>
-                    <td className="mono" style={{ textAlign: "right" }}>{r.unitAmount.toLocaleString()}</td>
-                    <td className="mono" style={{ textAlign: "right" }}>{r.amount.toLocaleString()}</td>
+                    <td>
+                      {r.attendeeNames.map((n) => <span className="badge badge-gray" key={n} style={{ marginRight: 4 }}>{n}</span>)}
+                      <span className="co-tag" style={{ marginLeft: 4 }}>{r.myCount}/{r.totalCount}명</span>
+                    </td>
+                    <td className="mono" style={{ textAlign: "right" }}>{r.clubTotal.toLocaleString()}</td>
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{r.amount.toLocaleString()}</td>
                     <td>
                       {r.disbursement?.status === "paid" ? (
                         <span className="badge badge-green">지급완료</span>
@@ -137,7 +181,7 @@ export default async function BudgetPaymentsPage({ searchParams }) {
                           companyId={companyId}
                           year={year}
                           month={month}
-                          attendeeCount={r.attendeeCount}
+                          attendeeCount={r.myCount}
                           amount={r.amount}
                           paidBy={authUser.id}
                         />
@@ -147,15 +191,21 @@ export default async function BudgetPaymentsPage({ searchParams }) {
                   <tr key={r.clubId + "-detail"}>
                     <td colSpan={6} style={{ paddingTop: 0, paddingBottom: 14, borderBottom: "1px solid var(--line)" }}>
                       <div style={{ background: "var(--bg)", borderRadius: 8, padding: "8px 12px" }}>
+                        <div className="co-tag" style={{ marginBottom: 6 }}>
+                          활동비용 합계 {r.expense.toLocaleString()}원 · 비용 50% {r.byExpense.toLocaleString()}원 · 전체 참석 {r.totalCount}명 × 3만원 {r.byHead.toLocaleString()}원 · 월 한도 500,000원
+                          {" → "}동호회 지급액 <b style={{ color: "var(--ink-2)" }}>{r.clubTotal.toLocaleString()}원</b>
+                          {" · "}자사 {r.myCount}/{r.totalCount} 배분 <b style={{ color: "var(--ink-2)" }}>{r.amount.toLocaleString()}원</b>
+                        </div>
                         <div className="co-tag" style={{ marginBottom: 4 }}>이 금액을 구성한 보고서 {r.reports.length}건</div>
                         {r.reports.map((rep) => (
                           <div key={rep.postId} style={{ fontSize: 12, color: "var(--ink-2)", padding: "3px 0" }}>
-                            <span className="mono">{rep.activityDate}</span> · {rep.title} — 참석: {rep.attendeeNames.join(", ")}
+                            <span className="mono">{rep.activityDate}</span> · {rep.title} — 비용 <span className="mono">{rep.expense.toLocaleString()}원</span>
+                            {rep.attendeeNames.length > 0 && <> · 자사 참석: {rep.attendeeNames.join(", ")}</>}
                             {rep.attachments.length === 0 ? (
                               <span className="empty-note" style={{ padding: 0, marginLeft: 6 }}>첨부파일 없음</span>
                             ) : (
                               rep.attachments.map((a, i) => (
-                                <a
+                                
                                   key={i}
                                   href={a.file_url}
                                   target="_blank"
