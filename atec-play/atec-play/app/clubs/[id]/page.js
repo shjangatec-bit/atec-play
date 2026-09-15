@@ -8,6 +8,10 @@ import CloseRequestButton from "./CloseRequestButton";
 import WithdrawButton from "./WithdrawButton";
 import ClubDetailTabs from "./ClubDetailTabs";
 
+export const PER_PERSON_CAP = 30000;
+export const MONTHLY_CLUB_CAP = 500000;
+export const EXPENSE_RATIO = 0.5;
+
 export default async function ClubDetailPage({ params }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -34,7 +38,6 @@ export default async function ClubDetailPage({ params }) {
   // 회원현황/활동보고서/지원금 — 게스트에게는 아예 조회하지 않음 (열람 자체를 막기 위함)
   let members = [];
   let reportPosts = [];
-  let unitAmount = 0;
   let clubMembersForCheck = [];
 
   if (!isGuest) {
@@ -48,19 +51,12 @@ export default async function ClubDetailPage({ params }) {
     const { data: r } = await supabase
       .from("posts")
       .select(
-        "id, title, activity_date, created_at, author:author_id(name), post_attendees(user_id, user:user_id(name, company:company_id(name))), post_attachments(file_url, file_type)"
+        "id, title, activity_date, expense_amount, created_at, author:author_id(name), post_attendees(user_id, user:user_id(name, company:company_id(name))), post_attachments(file_url, file_type)"
       )
       .eq("club_id", clubId)
       .eq("type", "report")
       .order("activity_date", { ascending: false });
     reportPosts = r || [];
-
-    const { data: rate } = await supabase
-      .from("club_support_rates")
-      .select("unit_amount")
-      .eq("club_id", clubId)
-      .maybeSingle();
-    unitAmount = rate?.unit_amount || 0;
 
     const { data: cm } = await supabase
       .from("club_members")
@@ -102,17 +98,26 @@ export default async function ClubDetailPage({ params }) {
     });
   }
 
-  // 월별 자동 집계 — 같은 사람이 그 달에 여러 번 참석해도 1명으로만 집계
-  // (지원금 지급 관리 화면의 실제 지급 계산 방식과 동일하게 맞춤)
-  const monthlyAttendeeSets = {};
+  // 월별 자동 집계
+  // 지급액 = ① 비용합계×50%  ② 참석인원×3만원  ③ 50만원  중 가장 작은 금액
+  // 같은 사람이 그 달에 여러 번 참석해도 1명으로만 집계합니다.
+  const monthlyRaw = {};
   reportPosts.forEach((p) => {
     if (!p.activity_date) return;
     const ym = p.activity_date.slice(0, 7);
-    if (!monthlyAttendeeSets[ym]) monthlyAttendeeSets[ym] = new Set();
-    (p.post_attendees || []).forEach((a) => monthlyAttendeeSets[ym].add(a.user_id));
+    if (!monthlyRaw[ym]) monthlyRaw[ym] = { attendees: new Set(), expense: 0 };
+    (p.post_attendees || []).forEach((a) => monthlyRaw[ym].attendees.add(a.user_id));
+    monthlyRaw[ym].expense += Number(p.expense_amount) || 0;
   });
+
   const monthly = Object.fromEntries(
-    Object.entries(monthlyAttendeeSets).map(([ym, set]) => [ym, set.size])
+    Object.entries(monthlyRaw).map(([ym, v]) => {
+      const attendeeCount = v.attendees.size;
+      const byExpense = Math.floor(v.expense * EXPENSE_RATIO);
+      const byHead = attendeeCount * PER_PERSON_CAP;
+      const amount = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
+      return [ym, { attendeeCount, expense: v.expense, byExpense, byHead, amount }];
+    })
   );
 
   return (
@@ -170,7 +175,6 @@ export default async function ClubDetailPage({ params }) {
           members={members}
           boardPosts={boardPosts || []}
           reportPosts={reportPosts}
-          unitAmount={unitAmount}
           monthly={monthly}
           clubMembersForCheck={clubMembersForCheck}
           currentUserId={authUser.id}
