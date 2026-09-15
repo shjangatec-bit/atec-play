@@ -620,11 +620,11 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
           failed.push(`${f.name} (업로드 실패: ${upErr.message})`);
           continue;
         }
-        const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
+        const { data: signed } = await supabase.storage.from("club-files").createSignedUrl(path, 31536000);
         const fileType = /\.(pdf|jpg|jpeg|png)$/i.test(f.name) ? "receipt" : "document";
         const { error: attachErr } = await supabase
           .from("post_attachments")
-          .insert({ post_id: post.id, file_url: pub.publicUrl, file_type: fileType });
+          .insert({ post_id: post.id, file_url: signed?.signedUrl, file_type: fileType });
         if (attachErr) failed.push(`${f.name} (저장 실패: ${attachErr.message})`);
       }
       if (failed.length > 0) {
