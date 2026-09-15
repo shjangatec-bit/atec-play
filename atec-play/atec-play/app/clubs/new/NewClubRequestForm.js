@@ -27,8 +27,15 @@ export default function NewClubRequestForm({ userId }) {
         setSaving(false);
         return;
       }
-      const { data: pub } = supabase.storage.from("club-files").getPublicUrl(path);
-      fileUrl = pub.publicUrl;
+      const { data: signed, error: signErr } = await supabase.storage
+        .from("club-files")
+        .createSignedUrl(path, 31536000);
+      if (signErr || !signed) {
+        setError("파일 주소 생성에 실패했습니다: " + (signErr?.message || ""));
+        setSaving(false);
+        return;
+      }
+      fileUrl = signed.signedUrl;
     }
 
     const { error: insErr } = await supabase.from("club_lifecycle_requests").insert({
