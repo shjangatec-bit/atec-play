@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const SIGNED_URL_TTL = 31536000;
+const PER_PERSON_CAP = 30000;
+const MONTHLY_CLUB_CAP = 500000;
+const EXPENSE_RATIO = 0.5;
 
 const TABS = [
   { key: "members", label: "회원 현황" },
@@ -28,7 +31,6 @@ export default function ClubDetailTabs({
   members,
   boardPosts,
   reportPosts,
-  unitAmount,
   monthly,
   clubMembersForCheck,
   currentUserId,
@@ -208,7 +210,6 @@ export default function ClubDetailTabs({
           clubId={club.id}
           currentUserId={currentUserId}
           canWrite={canWriteReport}
-          unitAmount={unitAmount}
           clubMembers={clubMembersForCheck}
         />
       )}
@@ -216,22 +217,38 @@ export default function ClubDetailTabs({
       {tab === "budget" && !isGuest && (
         <div className="card">
           <div className="empty-note" style={{ padding: "0 0 12px" }}>
-            이 동호회의 지원 단가는 <b style={{ color: "var(--ink-2)" }}>1인당 {unitAmount.toLocaleString()}원</b>이며, 활동보고서에 체크된 참석 인원을 기준으로 매달 자동 집계됩니다.
+            지원금은 매월 <b style={{ color: "var(--ink-2)" }}>활동비용의 50%</b>, <b style={{ color: "var(--ink-2)" }}>참석 1인당 3만원</b>, <b style={{ color: "var(--ink-2)" }}>동호회 월 50만원</b> 중 가장 작은 금액으로 자동 계산됩니다. 활동보고서는 매월 1회(10일) 제출 기준입니다.
           </div>
           <table>
             <thead>
-              <tr><th>월</th><th style={{ textAlign: "right" }}>참석 인원</th><th style={{ textAlign: "right" }}>지원금액</th></tr>
+              <tr>
+                <th>월</th>
+                <th style={{ textAlign: "right" }}>활동비용</th>
+                <th style={{ textAlign: "right" }}>참석 인원</th>
+                <th style={{ textAlign: "right" }}>비용 50%</th>
+                <th style={{ textAlign: "right" }}>인원 기준</th>
+                <th style={{ textAlign: "right" }}>지급액</th>
+              </tr>
             </thead>
             <tbody>
-              {Object.entries(monthly).sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([ym, count]) => (
-                <tr key={ym}>
-                  <td className="mono">{ym}</td>
-                  <td className="mono" style={{ textAlign: "right" }}>{count}명</td>
-                  <td className="mono" style={{ textAlign: "right" }}>{(count * unitAmount).toLocaleString()}원</td>
-                </tr>
-              ))}
+              {Object.entries(monthly).sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([ym, v]) => {
+                const capped = v.amount === MONTHLY_CLUB_CAP && (v.byExpense > MONTHLY_CLUB_CAP || v.byHead > MONTHLY_CLUB_CAP);
+                return (
+                  <tr key={ym}>
+                    <td className="mono">{ym}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{v.expense.toLocaleString()}원</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{v.attendeeCount}명</td>
+                    <td className="mono" style={{ textAlign: "right", color: v.amount === v.byExpense ? "var(--ink)" : "var(--ink-2)" }}>{v.byExpense.toLocaleString()}</td>
+                    <td className="mono" style={{ textAlign: "right", color: v.amount === v.byHead ? "var(--ink)" : "var(--ink-2)" }}>{v.byHead.toLocaleString()}</td>
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>
+                      {v.amount.toLocaleString()}원
+                      {capped && <span className="badge badge-amber" style={{ marginLeft: 6 }}>한도적용</span>}
+                    </td>
+                  </tr>
+                );
+              })}
               {Object.keys(monthly).length === 0 && (
-                <tr><td colSpan={3}><div className="empty-note">등록된 활동보고서가 없습니다.</div></td></tr>
+                <tr><td colSpan={6}><div className="empty-note">등록된 활동보고서가 없습니다.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -304,7 +321,6 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
   }
 
-  // 저장된 파일 주소에서 스토리지 상 실제 경로만 뽑아냅니다. (첨부파일도 같이 지우기 위함)
   function storagePathFromUrl(url) {
     if (!url) return null;
     const markers = ["/club-files/", "/object/sign/club-files/", "/object/public/club-files/"];
@@ -323,7 +339,6 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
     return null;
   }
 
-  // 삭제 가능 여부: 글쓴이 본인이거나, 이 동호회의 가입/탈회 승인 권한(회장·총무·통합관리자)이 있으면 가능
   function canDeletePost(post) {
     return post.author_id === currentUserId || canApprove;
   }
@@ -335,7 +350,6 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
     const paths = (post.post_attachments || []).map((a) => storagePathFromUrl(a.file_url)).filter(Boolean);
     if (paths.length > 0) {
       await supabase.storage.from("club-files").remove(paths);
-      // 스토리지 파일 삭제가 실패해도(권한 등) 게시글 삭제는 계속 진행합니다. 최악의 경우 안 쓰는 파일만 남습니다.
     }
 
     const { error } = await supabase.from("posts").delete().eq("id", post.id);
@@ -348,8 +362,6 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
   }
 
   async function toggleLike(postId, alreadyLiked) {
-    // useState는 반영이 비동기라 초고속 연타(하트 버튼 습관적 더블클릭 등)를 못 막는 경우가 있어,
-    // ref로 즉시(동기적으로) 잠급니다.
     if (isGuest || likeLockRef.current[postId]) return;
     likeLockRef.current[postId] = true;
     setLikeSaving((s) => ({ ...s, [postId]: true }));
@@ -359,7 +371,6 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
       ({ error } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", currentUserId));
     } else {
       ({ error } = await supabase.from("post_likes").insert({ post_id: postId, user_id: currentUserId }));
-      // 화면이 최신 상태를 못 따라와서 이미 좋아요된 걸 또 누른 경우, 에러 대신 좋아요 취소로 자동 처리
       if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) {
         ({ error } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", currentUserId));
       }
@@ -579,17 +590,22 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
   );
 }
 
-function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMembers }) {
+function ReportTab({ posts, clubId, currentUserId, canWrite, clubMembers }) {
   const router = useRouter();
   const supabase = createClient();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [activityDate, setActivityDate] = useState("");
+  const [expense, setExpense] = useState("");
   const [checked, setChecked] = useState({});
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
+  const expenseNum = Number(expense) || 0;
+  const byExpense = Math.floor(expenseNum * EXPENSE_RATIO);
+  const byHead = checkedCount * PER_PERSON_CAP;
+  const estimate = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -602,7 +618,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
 
     const { data: post, error } = await supabase
       .from("posts")
-      .insert({ club_id: clubId, author_id: currentUserId, type: "report", title, content, activity_date: activityDate })
+      .insert({ club_id: clubId, author_id: currentUserId, type: "report", title, content, activity_date: activityDate, expense_amount: expenseNum })
       .select()
       .single();
 
@@ -621,8 +637,6 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
     }
 
     if (files.length > 0) {
-      // 파일마다 확장자로 증빙(pdf/jpg/jpeg/png)/첨부파일(그 외) 자동 구분해서 각각 저장
-      // 이름규칙: {동호회id}/{보고서id}/{업로드시각}-{순번}-{원본파일명(특수문자 제거)}
       const failed = [];
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -648,7 +662,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
       }
     }
 
-    setTitle(""); setContent(""); setActivityDate(""); setChecked({}); setFiles([]);
+    setTitle(""); setContent(""); setActivityDate(""); setExpense(""); setChecked({}); setFiles([]);
     setSaving(false);
     alert("보고서가 등록되었습니다.");
     router.refresh();
@@ -660,13 +674,14 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
         <div className="section-title">활동보고서</div>
         {posts.map((p) => {
           const count = p.post_attendees?.length || 0;
+          const exp = Number(p.expense_amount) || 0;
           return (
             <div className="post-item" key={p.id}>
               <div className="ptitle">{p.title}</div>
               <div className="pmeta">
                 <span>{p.author?.name}</span>
                 <span className="mono">활동일 {p.activity_date}</span>
-                <span>참석 {count}명 · 지원금 <span className="mono">{(count * unitAmount).toLocaleString()}</span></span>
+                <span>참석 {count}명 · 비용 <span className="mono">{exp.toLocaleString()}원</span></span>
               </div>
               {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6, whiteSpace: "pre-wrap" }}>{p.content}</div>}
               <div className="row-flex" style={{ marginTop: 8, flexWrap: "wrap" }}>
@@ -695,9 +710,14 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
           <form onSubmit={submit}>
             <div className="field"><label>제목</label><input value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
             <div className="field"><label>활동일자</label><input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} required /></div>
+            <div className="field">
+              <label>활동 비용 (원)</label>
+              <input type="number" min="0" step="1000" value={expense} onChange={(e) => setExpense(e.target.value)} placeholder="예: 300000" required />
+              <div className="empty-note" style={{ padding: "4px 0 0" }}>증빙에 기재된 총 지출 금액을 입력하세요. 이 금액의 50%가 지원 기준이 됩니다.</div>
+            </div>
             <div className="field"><label>내용</label><textarea value={content} onChange={(e) => setContent(e.target.value)} /></div>
             <div className="field">
-              <label>참석자 체크 <span className="co-tag">(1인당 {unitAmount.toLocaleString()}원 자동 계산)</span></label>
+              <label>참석자 체크 <span className="co-tag">(1인당 3만원 한도)</span></label>
               <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
                 {clubMembers.map((m) => (
                   <label key={m.user_id} className="row-flex" style={{ gap: 8, padding: "4px 0", fontSize: 13 }}>
@@ -711,8 +731,11 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, unitAmount, clubMem
                   </label>
                 ))}
               </div>
-              <div className="empty-note" style={{ textAlign: "right", padding: "6px 0 0" }}>
-                현재 체크 {checkedCount}명 → 예상 지원금 <b className="mono" style={{ color: "var(--ink)" }}>{(checkedCount * unitAmount).toLocaleString()}원</b>
+              <div className="empty-note" style={{ padding: "8px 0 0", lineHeight: 1.8 }}>
+                비용의 50% <b className="mono">{byExpense.toLocaleString()}원</b> · 참석 {checkedCount}명 × 3만원 <b className="mono">{byHead.toLocaleString()}원</b> · 월 한도 <b className="mono">500,000원</b>
+                <br />
+                → 예상 지원금 <b className="mono" style={{ color: "var(--ink)", fontSize: 14 }}>{estimate.toLocaleString()}원</b>
+                <span style={{ marginLeft: 6 }}>(이 보고서 기준. 같은 달에 여러 건이면 합산해 다시 계산됩니다)</span>
               </div>
             </div>
             <div className="field">
