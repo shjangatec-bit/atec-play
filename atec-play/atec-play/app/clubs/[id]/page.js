@@ -4,6 +4,7 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import LogoutButton from "@/components/LogoutButton";
 import CoverImageUploader from "./CoverImageUploader";
+import DescriptionEditor from "./DescriptionEditor";
 import CloseRequestButton from "./CloseRequestButton";
 import WithdrawButton from "./WithdrawButton";
 import ClubDetailTabs from "./ClubDetailTabs";
@@ -219,6 +220,7 @@ export default async function ClubDetailPage({ params }) {
               {club.description} · {club.status === "active" ? "운영중" : "폐설"}
             </div>
           </div>
+          {canApprove && <DescriptionEditor clubId={club.id} current={club.description} />}
           {canApprove && <CoverImageUploader clubId={club.id} />}
                     {canRequestClose && club.status === "active" && (
             <CloseRequestButton clubId={club.id} userId={authUser.id} alreadyRequested={alreadyRequestedClose} />
