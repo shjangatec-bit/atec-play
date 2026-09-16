@@ -236,8 +236,11 @@ export default function ClubDetailTabs({
 
       {tab === "budget" && !isGuest && (
         <div className="card">
-          <div className="empty-note" style={{ padding: "0 0 12px" }}>
-            지원금은 매월 <b style={{ color: "var(--ink-2)" }}>활동비용의 50%</b>, <b style={{ color: "var(--ink-2)" }}>참석 1인당 3만원</b>, <b style={{ color: "var(--ink-2)" }}>동호회 월 50만원</b> 중 가장 작은 금액으로 자동 계산됩니다. 활동보고서는 매월 1회(10일) 제출 기준입니다.
+          <div className="empty-note" style={{ padding: "0 0 12px", lineHeight: 1.8 }}>
+            아래 항목을 입력하면 지원금이 자동 계산됩니다. 별도 신청양식은 작성하지 않아도 되며,
+            결재용 운영 결과보고서는 <b style={{ color: "var(--ink-2)" }}>지원금 현황</b> 탭에서 월별로 출력할 수 있습니다.
+            <br />
+            영수증 등 지출 증빙은 아래 첨부파일로 올려주세요.
           </div>
           <table>
             <thead>
