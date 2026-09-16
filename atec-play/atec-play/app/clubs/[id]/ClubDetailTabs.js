@@ -452,16 +452,16 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
             const photoUrl = p.post_attachments?.[0]?.file_url;
             const canDelete = canDeletePost(p);
             return (
-              <div
-                className="gph"
-                key={p.id}
-                title={p.title}
-                onClick={() => photoUrl && setLightbox({ url: photoUrl, title: p.title })}
-                style={{
-                  position: "relative",
-                  cursor: photoUrl ? "pointer" : "default",
-                  ...(photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
-                }}
+              <div key={p.id}>
+                <div
+                  className="gph"
+                  title={p.title}
+                  onClick={() => photoUrl && setLightbox({ url: photoUrl, title: p.title })}
+                  style={{
+                    position: "relative",
+                    cursor: photoUrl ? "pointer" : "default",
+                    ...(photoUrl ? { backgroundImage: `url(${photoUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : {}),
+                  }}
               >
                 {canDelete && (
                   <button
