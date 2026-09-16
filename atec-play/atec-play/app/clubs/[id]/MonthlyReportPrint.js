@@ -95,7 +95,7 @@ function buildHtml({ clubName, y, m, data }) {
 </style></head><body>
 
 <h1>${esc(y)}년 ${esc(m)}월 ${esc(clubName)} 운영 결과보고</h1>
-<div class="sub">활동 ${data.reports.length}회 · 참석 연인원 ${data.grossHeadcount}명 · 지원 대상 ${data.attendeeCount}명</div>
+<div class="sub">활동 ${data.reports.length}회 · 참석 인원 ${data.grossHeadcount}명 · 지원 대상 ${data.attendeeCount}명</div>
 
 <h2>1. 활동 내역</h2>
 <table>
