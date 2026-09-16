@@ -27,8 +27,6 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const nextMonthDate = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
 
   const supabase = createClient();
-  // 동호회 전체 기준으로 한도를 먼저 계산해야 하므로, 자사 참석자만이 아니라
-  // 그 달 모든 활동보고서와 전체 참석자·전체 비용을 함께 가져옵니다.
   const { data: reportPosts } = await supabase
     .from("posts")
     .select(
@@ -68,7 +66,6 @@ export default async function BudgetPaymentsPage({ searchParams }) {
     });
   });
 
-  // 자사 소속 참석자가 한 명도 없는 동호회는 이 화면에 나타나지 않습니다.
   const clubIds = Object.keys(byClub).filter((id) => byClub[id].myAttendees.size > 0);
 
   const { data: existing } = clubIds.length
@@ -87,12 +84,9 @@ export default async function BudgetPaymentsPage({ searchParams }) {
     const totalCount = c.allAttendees.size;
     const myCount = c.myAttendees.size;
 
-    // 1단계 — 동호회 전체 지급액 (비용 50% / 인원×3만원 / 50만원 중 최솟값)
     const byExpense = Math.floor(c.expense * EXPENSE_RATIO);
     const byHead = totalCount * PER_PERSON_CAP;
     const clubTotal = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
-
-    // 2단계 — 자사 참석인원 비율만큼 배분
     const myAmount = totalCount > 0 ? Math.floor((clubTotal * myCount) / totalCount) : 0;
 
     return {
@@ -157,7 +151,7 @@ export default async function BudgetPaymentsPage({ searchParams }) {
             <tbody>
               {rows.map((r) => (
                 <Fragment key={r.clubId}>
-                  <tr key={r.clubId}>
+                  <tr>
                     <td>{r.clubName}</td>
                     <td>
                       {r.attendeeNames.map((n) => <span className="badge badge-gray" key={n} style={{ marginRight: 4 }}>{n}</span>)}
@@ -188,31 +182,22 @@ export default async function BudgetPaymentsPage({ searchParams }) {
                       )}
                     </td>
                   </tr>
-                  <tr key={r.clubId + "-detail"}>
+                  <tr>
                     <td colSpan={6} style={{ paddingTop: 0, paddingBottom: 14, borderBottom: "1px solid var(--line)" }}>
                       <div style={{ background: "var(--bg)", borderRadius: 8, padding: "8px 12px" }}>
                         <div className="co-tag" style={{ marginBottom: 6 }}>
-                          활동비용 합계 {r.expense.toLocaleString()}원 · 비용 50% {r.byExpense.toLocaleString()}원 · 전체 참석 {r.totalCount}명 × 3만원 {r.byHead.toLocaleString()}원 · 월 한도 500,000원
-                          {" → "}동호회 지급액 <b style={{ color: "var(--ink-2)" }}>{r.clubTotal.toLocaleString()}원</b>
-                          {" · "}자사 {r.myCount}/{r.totalCount} 배분 <b style={{ color: "var(--ink-2)" }}>{r.amount.toLocaleString()}원</b>
+                          활동비용 합계 {r.expense.toLocaleString()}원 · 비용 50% {r.byExpense.toLocaleString()}원 · 전체 참석 {r.totalCount}명 × 3만원 {r.byHead.toLocaleString()}원 · 월 한도 500,000원 → 동호회 지급액 <b style={{ color: "var(--ink-2)" }}>{r.clubTotal.toLocaleString()}원</b> · 자사 {r.myCount}/{r.totalCount} 배분 <b style={{ color: "var(--ink-2)" }}>{r.amount.toLocaleString()}원</b>
                         </div>
                         <div className="co-tag" style={{ marginBottom: 4 }}>이 금액을 구성한 보고서 {r.reports.length}건</div>
                         {r.reports.map((rep) => (
                           <div key={rep.postId} style={{ fontSize: 12, color: "var(--ink-2)", padding: "3px 0" }}>
                             <span className="mono">{rep.activityDate}</span> · {rep.title} — 비용 <span className="mono">{rep.expense.toLocaleString()}원</span>
-                            {rep.attendeeNames.length > 0 && <> · 자사 참석: {rep.attendeeNames.join(", ")}</>}
+                            {rep.attendeeNames.length > 0 && <span> · 자사 참석: {rep.attendeeNames.join(", ")}</span>}
                             {rep.attachments.length === 0 ? (
                               <span className="empty-note" style={{ padding: 0, marginLeft: 6 }}>첨부파일 없음</span>
                             ) : (
                               rep.attachments.map((a, i) => (
-                                
-                                  key={i}
-                                  href={a.file_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className={`badge ${a.file_type === "receipt" ? "badge-red" : "badge-gray"}`}
-                                  style={{ marginLeft: 6 }}
-                                >
+                                <a key={i} href={a.file_url} target="_blank" rel="noreferrer" className={`badge ${a.file_type === "receipt" ? "badge-red" : "badge-gray"}`} style={{ marginLeft: 6 }}>
                                   {a.file_type === "receipt" ? "증빙 열기" : "첨부파일 열기"}
                                 </a>
                               ))
