@@ -210,8 +210,9 @@ export default function ClubDetailTabs({
           clubId={club.id}
           currentUserId={currentUserId}
           canWrite={canWriteReport}
+          canApprove={canApprove}
           clubMembers={clubMembersForCheck}
-        />
+        />        
       )}
 
       {tab === "budget" && !isGuest && (
@@ -590,7 +591,7 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
   );
 }
 
-function ReportTab({ posts, clubId, currentUserId, canWrite, clubMembers }) {
+function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMembers }) {
   const router = useRouter();
   const supabase = createClient();
   const [title, setTitle] = useState("");
@@ -598,10 +599,49 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, clubMembers }) {
   const [activityDate, setActivityDate] = useState("");
   const [expense, setExpense] = useState("");
   const [checked, setChecked] = useState({});
+
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState({});
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
+
+  function storagePathFromUrl(url) {
+    if (!url) return null;
+    const markers = ["/club-files/", "/object/sign/club-files/", "/object/public/club-files/"];
+    for (const marker of markers) {
+      const idx = url.indexOf(marker);
+      if (idx === -1) continue;
+      let rest = url.slice(idx + marker.length);
+      const q = rest.indexOf("?");
+      if (q !== -1) rest = rest.slice(0, q);
+      try {
+        return decodeURIComponent(rest);
+      } catch {
+        return rest;
+      }
+    }
+    return null;
+  }
+
+  async function deleteReport(post) {
+    if (!confirm(`"${post.title}" 보고서를 삭제할까요?\n참석자 체크와 첨부파일도 함께 삭제되며, 그 달 지원금이 다시 계산됩니다.`)) return;
+    setDeleting((d) => ({ ...d, [post.id]: true }));
+
+    const paths = (post.post_attachments || []).map((a) => storagePathFromUrl(a.file_url)).filter(Boolean);
+    if (paths.length > 0) {
+      await supabase.storage.from("club-files").remove(paths);
+    }
+
+    const { error } = await supabase.from("posts").delete().eq("id", post.id);
+    setDeleting((d) => ({ ...d, [post.id]: false }));
+    if (error) {
+      alert("삭제 실패: " + error.message);
+      return;
+    }
+    router.refresh();
+  }
+  
   const expenseNum = Number(expense) || 0;
   const byExpense = Math.floor(expenseNum * EXPENSE_RATIO);
   const byHead = checkedCount * PER_PERSON_CAP;
@@ -684,7 +724,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, clubMembers }) {
                 <span>참석 {count}명 · 비용 <span className="mono">{exp.toLocaleString()}원</span></span>
               </div>
               {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6, whiteSpace: "pre-wrap" }}>{p.content}</div>}
-              <div className="row-flex" style={{ marginTop: 8, flexWrap: "wrap" }}>
+              <div className="row-flex" style={{ marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {(p.post_attachments || []).length === 0 && (
                   <span className="empty-note" style={{ padding: 0 }}>첨부파일 없음</span>
                 )}
@@ -693,7 +733,17 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, clubMembers }) {
                     {a.file_type === "receipt" ? "증빙 열기" : "첨부파일 열기"}
                   </a>
                 ))}
-              </div>
+                {(canWrite || canApprove) && (
+                  <button
+                    className="btn-sm btn-outline"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => deleteReport(p)}
+                    disabled={deleting[p.id]}
+                  >
+                    {deleting[p.id] ? "삭제 중..." : "삭제"}
+                  </button>
+                )}
+              </div>                
             </div>
           );
         })}
