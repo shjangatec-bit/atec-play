@@ -15,7 +15,7 @@ export default function RequestRow({ req, reviewerId }) {
     if (req.type === "create") {
       const { data: club, error: clubErr } = await supabase
         .from("clubs")
-        .insert({ name: req.proposed_name, description: "", status: "active" })
+        .insert({ name: req.proposed_name, description: req.proposed_description || "", status: "active" })
         .select()
         .single();
       if (clubErr || !club) {
