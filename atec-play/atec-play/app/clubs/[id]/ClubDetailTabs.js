@@ -477,6 +477,15 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
                     {deleting[p.id] ? "…" : "✕"}
                   </button>
                 )}
+                </div>
+                <div style={{ padding: "8px 2px 0" }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.title}
+                  </div>
+                  <div className="co-tag" style={{ marginTop: 2 }}>
+                    {new Date(p.created_at).toLocaleDateString("ko-KR")}
+                  </div>
+                </div>
               </div>
             );
           })}
