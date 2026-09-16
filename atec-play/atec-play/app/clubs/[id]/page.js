@@ -75,11 +75,14 @@ export default async function ClubDetailPage({ params }) {
   const canWriteReport = !isGuest && hasPermission(permissions, "CLUB_REPORT_WRITE", { clubId });
   const canWritePost = !isGuest && hasPermission(permissions, "CLUB_POST_WRITE", { clubId });
 
-  // 이 동호회의 승인된 회원인지 (회장/총무/회원 누구나 폐설 신청 가능)
+  // 이 동호회의 승인된 회원인지 (탈회 신청 버튼 노출에 사용)
     const myMembership = members.find((m) => m.status === "approved" && m.user?.id === authUser.id);
   const isMemberOfThisClub = !isGuest && !!myMembership;
-  // 회원이 모두 빠진 동호회도 정리할 수 있도록, 폐설 승인 권한자(통합관리자)는 회원이 아니어도 신청 가능
-  const canRequestClose = isMemberOfThisClub || (!isGuest && hasPermission(permissions, "CLUB_CLOSE_APPROVE"));
+    // 폐설 신청은 회장·총무만 가능합니다. 회원이 모두 빠진 동호회도 정리할 수 있도록
+  // 폐설 승인 권한자(통합관리자)는 회원이 아니어도 신청할 수 있습니다.
+  const canRequestClose = !isGuest && (
+    (isMemberOfThisClub && canApprove) || hasPermission(permissions, "CLUB_CLOSE_APPROVE")
+  );
   let alreadyRequestedClose = false;
   if (canRequestClose && club.status === "active") {
     const { data: existingCloseReq } = await supabase
