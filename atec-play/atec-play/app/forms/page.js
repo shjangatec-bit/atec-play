@@ -15,9 +15,11 @@ const FORM_FILES = [
     href: "/동호회_신설_운영_지침.pdf",
   },
   {
-    title: "동호회 보조금(활동비 지원금) 신청양식",
-    description: "참석자 명단, 비용 지출내역을 작성하는 양식입니다. 활동보고서 등록 시 이 양식을 채워서 함께 첨부해주세요.",
-    href: "/동호회_보조금_신청양식.pdf",
+  {
+    title: "동호회 보조금 신청양식 — 시스템 자동 생성",
+    description:
+      "별도 양식을 작성하지 않아도 됩니다. 활동보고서를 등록하면 동호회 상세 화면의 [지원금 현황] 탭에서 해당 월의 [양식 출력] 버튼으로 결재용 운영 결과보고서를 바로 뽑을 수 있습니다. 활동 내역, 참석자 명단, 지원금 산정, 회사별 배분이 모두 자동으로 채워집니다.",
+    notice: true,
   },
 ];
 
@@ -58,12 +60,16 @@ export default async function FormsPage() {
         </div>
         <div className="grid-2">
           {FORM_FILES.map((f) => (
-            <div className="card" key={f.href}>
+            <div className="card" key={f.title}>
               <div className="section-title">{f.title}</div>
               <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6, marginBottom: 14 }}>{f.description}</div>
-              <a className="btn-sm btn-outline" href={f.href} download target="_blank" rel="noreferrer">
-                다운로드
-              </a>
+              {f.notice ? (
+                <span className="badge badge-brand">시스템에서 자동 생성</span>
+              ) : (
+                <a className="btn-sm btn-outline" href={f.href} download target="_blank" rel="noreferrer">
+                  다운로드
+                </a>
+              )}
             </div>
           ))}
         </div>
