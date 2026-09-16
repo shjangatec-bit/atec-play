@@ -26,6 +26,24 @@ const CLUB_PERM_LABELS = [
   { code: "CLUB_BUDGET_VIEW", label: "지원금 현황 조회" },
 ];
 
+function storagePathFromUrl(url) {
+  if (!url) return null;
+  const markers = ["/object/sign/club-files/", "/object/public/club-files/", "/club-files/"];
+  for (const marker of markers) {
+    const idx = url.indexOf(marker);
+    if (idx === -1) continue;
+    let rest = url.slice(idx + marker.length);
+    const q = rest.indexOf("?");
+    if (q !== -1) rest = rest.slice(0, q);
+    try {
+      return decodeURIComponent(rest);
+    } catch {
+      return rest;
+    }
+  }
+  return null;
+}
+
 export default function ClubDetailTabs({
   club,
   members,
@@ -212,7 +230,7 @@ export default function ClubDetailTabs({
           canWrite={canWriteReport}
           canApprove={canApprove}
           clubMembers={clubMembersForCheck}
-        />        
+        />
       )}
 
       {tab === "budget" && !isGuest && (
@@ -320,24 +338,6 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  }
-
-  function storagePathFromUrl(url) {
-    if (!url) return null;
-    const markers = ["/club-files/", "/object/sign/club-files/", "/object/public/club-files/"];
-    for (const marker of markers) {
-      const idx = url.indexOf(marker);
-      if (idx === -1) continue;
-      let rest = url.slice(idx + marker.length);
-      const q = rest.indexOf("?");
-      if (q !== -1) rest = rest.slice(0, q);
-      try {
-        return decodeURIComponent(rest);
-      } catch {
-        return rest;
-      }
-    }
-    return null;
   }
 
   function canDeletePost(post) {
@@ -599,29 +599,18 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
   const [activityDate, setActivityDate] = useState("");
   const [expense, setExpense] = useState("");
   const [checked, setChecked] = useState({});
-
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState({});
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
+  const expenseNum = Number(expense) || 0;
+  const byExpense = Math.floor(expenseNum * EXPENSE_RATIO);
+  const byHead = checkedCount * PER_PERSON_CAP;
+  const estimate = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
 
-  function storagePathFromUrl(url) {
-    if (!url) return null;
-    const markers = ["/club-files/", "/object/sign/club-files/", "/object/public/club-files/"];
-    for (const marker of markers) {
-      const idx = url.indexOf(marker);
-      if (idx === -1) continue;
-      let rest = url.slice(idx + marker.length);
-      const q = rest.indexOf("?");
-      if (q !== -1) rest = rest.slice(0, q);
-      try {
-        return decodeURIComponent(rest);
-      } catch {
-        return rest;
-      }
-    }
-    return null;
+  function safeName(name) {
+    return name.replace(/[^a-zA-Z0-9._-]/g, "_");
   }
 
   async function deleteReport(post) {
@@ -640,15 +629,6 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
       return;
     }
     router.refresh();
-  }
-  
-  const expenseNum = Number(expense) || 0;
-  const byExpense = Math.floor(expenseNum * EXPENSE_RATIO);
-  const byHead = checkedCount * PER_PERSON_CAP;
-  const estimate = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
-
-  function safeName(name) {
-    return name.replace(/[^a-zA-Z0-9._-]/g, "_");
   }
 
   async function submit(e) {
@@ -743,7 +723,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
                     {deleting[p.id] ? "삭제 중..." : "삭제"}
                   </button>
                 )}
-              </div>                
+              </div>
             </div>
           );
         })}
