@@ -111,13 +111,35 @@ export default async function ClubDetailPage({ params }) {
   // 월별 자동 집계
   // 지급액 = ① 비용합계×50%  ② 참석인원×3만원  ③ 50만원  중 가장 작은 금액
   // 같은 사람이 그 달에 여러 번 참석해도 1명으로만 집계합니다.
-  const monthlyRaw = {};
+    const monthlyRaw = {};
   reportPosts.forEach((p) => {
     if (!p.activity_date) return;
     const ym = p.activity_date.slice(0, 7);
-    if (!monthlyRaw[ym]) monthlyRaw[ym] = { attendees: new Set(), expense: 0 };
-    (p.post_attendees || []).forEach((a) => monthlyRaw[ym].attendees.add(a.user_id));
-    monthlyRaw[ym].expense += Number(p.expense_amount) || 0;
+    if (!monthlyRaw[ym]) monthlyRaw[ym] = { attendees: new Set(), expense: 0, reports: [], companyCount: {} };
+    const bucket = monthlyRaw[ym];
+    bucket.expense += Number(p.expense_amount) || 0;
+
+    const names = [];
+    const perReportCompany = {};
+    (p.post_attendees || []).forEach((a) => {
+      bucket.attendees.add(a.user_id);
+      const co = a.user?.company?.name || "-";
+      names.push({ name: a.user?.name || "-", company: co });
+      perReportCompany[co] = (perReportCompany[co] || 0) + 1;
+      // 회사별 실인원(중복 제외)은 아래에서 따로 집계
+      if (!bucket.companyCount[co]) bucket.companyCount[co] = new Set();
+      bucket.companyCount[co].add(a.user_id);
+    });
+
+    bucket.reports.push({
+      date: p.activity_date,
+      title: p.title,
+      content: p.content || "",
+      expense: Number(p.expense_amount) || 0,
+      headcount: names.length,
+      companyBreakdown: perReportCompany,
+      attendees: names,
+    });
   });
 
   const monthly = Object.fromEntries(
@@ -126,7 +148,33 @@ export default async function ClubDetailPage({ params }) {
       const byExpense = Math.floor(v.expense * EXPENSE_RATIO);
       const byHead = attendeeCount * PER_PERSON_CAP;
       const amount = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
-      return [ym, { attendeeCount, expense: v.expense, byExpense, byHead, amount }];
+
+      // 회사별 실인원(중복 제외)과 그 비율에 따른 지원금 배분
+      const companyRows = Object.entries(v.companyCount)
+        .map(([co, set]) => ({ company: co, count: set.size }))
+        .sort((a, b) => b.count - a.count);
+      let assigned = 0;
+      companyRows.forEach((r, i) => {
+        if (i === companyRows.length - 1) {
+          r.amount = amount - assigned; // 끝자리 오차는 마지막 회사에 몰아 합계를 맞춤
+        } else {
+          r.amount = attendeeCount > 0 ? Math.floor((amount * r.count) / attendeeCount) : 0;
+          assigned += r.amount;
+        }
+      });
+
+      const grossHeadcount = v.reports.reduce((s, r) => s + r.headcount, 0);
+
+      return [ym, {
+        attendeeCount,
+        grossHeadcount,
+        expense: v.expense,
+        byExpense,
+        byHead,
+        amount,
+        reports: v.reports.sort((a, b) => (a.date < b.date ? -1 : 1)),
+        companyRows,
+      }];
     })
   );
 
