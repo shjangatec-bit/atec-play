@@ -2,6 +2,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import MonthlyReportPrint from "./MonthlyReportPrint";
 
 const SIGNED_URL_TTL = 31536000;
 const PER_PERSON_CAP = 30000;
@@ -247,6 +248,7 @@ export default function ClubDetailTabs({
                 <th style={{ textAlign: "right" }}>비용 50%</th>
                 <th style={{ textAlign: "right" }}>인원 기준</th>
                 <th style={{ textAlign: "right" }}>지급액</th>
+                <th style={{ width: 90 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -263,11 +265,14 @@ export default function ClubDetailTabs({
                       {v.amount.toLocaleString()}원
                       {capped && <span className="badge badge-amber" style={{ marginLeft: 6 }}>한도적용</span>}
                     </td>
+                    <td style={{ textAlign: "right" }}>
+                      <MonthlyReportPrint clubName={club.name} ym={ym} data={v} />
+                    </td>
                   </tr>
                 );
               })}
               {Object.keys(monthly).length === 0 && (
-                <tr><td colSpan={6}><div className="empty-note">등록된 활동보고서가 없습니다.</div></td></tr>
+                <tr><td colSpan={7}><div className="empty-note">등록된 활동보고서가 없습니다.</div></td></tr>
               )}
             </tbody>
           </table>
