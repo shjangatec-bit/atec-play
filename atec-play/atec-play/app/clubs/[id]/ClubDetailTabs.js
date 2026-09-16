@@ -758,9 +758,10 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
                       onChange={(e) => setChecked((c) => ({ ...c, [m.user_id]: e.target.checked }))}
                     />
                     {m.user?.name} <span className="co-tag">{m.user?.company?.name}</span>
+                    {m.status === "withdrawn" && <span className="badge badge-gray">탈회</span>}
                   </label>
                 ))}
-              </div>
+            </div>
               <div className="empty-note" style={{ padding: "8px 0 0", lineHeight: 1.8 }}>
                 비용의 50% <b className="mono">{byExpense.toLocaleString()}원</b> · 참석 {checkedCount}명 × 3만원 <b className="mono">{byHead.toLocaleString()}원</b> · 월 한도 <b className="mono">500,000원</b>
                 <br />
