@@ -55,11 +55,17 @@ export default async function GuidePage() {
               <tr><td style={{ width: 140, fontWeight: 500 }}>가입 대상</td><td>임직원</td></tr>
               <tr><td style={{ fontWeight: 500 }}>활동회비</td><td>매월 1만원 (급여공제)</td></tr>
               <tr><td style={{ fontWeight: 500 }}>활동일정</td><td>각 동호회별 월별 일정에 따라 모임 활동</td></tr>
+              
               <tr>
                 <td style={{ fontWeight: 500 }}>동호회 지원</td>
-                <td>동호회 활동 참석인원 1인당 정액 지원 (동호회별 단가는 통합관리자 설정, 시스템이 자동 계산)</td>
+                <td>
+                  활동비용의 <b>50% 이내</b> 지원 · 참석 <b>1인당 월 3만원</b> · 동호회 <b>월 총액 50만원</b> 한도
+                  <div className="co-tag" style={{ marginTop: 4 }}>
+                    세 기준 중 가장 작은 금액으로 매월 자동 계산됩니다. 같은 사람이 여러 번 참석해도 1명으로 집계합니다.
+                  </div>
+                </td>
               </tr>
-            </tbody>
+              </tbody>
           </table>
         </div>
 
