@@ -94,7 +94,7 @@ tr:last-child td{border-bottom:none;}
 
 .club-card{background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; display:block;}
 .club-card > a{display:block; color:inherit;}
-.club-card .thumb{height:88px; background:linear-gradient(135deg, var(--brand-soft), #fff);}
+.club-card .thumb{height:200px; background:linear-gradient(135deg, var(--brand-soft), #fff);}
 .club-card .body{padding:16px;}
 .club-card h3{font-size:14.5px; font-weight:500; margin-bottom:5px;}
 .club-card .desc{font-size:12.5px; color:var(--ink-2); margin-bottom:12px; line-height:1.5;}
