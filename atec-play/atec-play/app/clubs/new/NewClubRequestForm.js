@@ -7,6 +7,7 @@ export default function NewClubRequestForm({ userId }) {
   const router = useRouter();
   const supabase = createClient();
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -41,6 +42,7 @@ export default function NewClubRequestForm({ userId }) {
     const { error: insErr } = await supabase.from("club_lifecycle_requests").insert({
       type: "create",
       proposed_name: name,
+      proposed_description: description,
       requester_id: userId,
       file_url: fileUrl,
       status: "pending",
@@ -61,6 +63,15 @@ export default function NewClubRequestForm({ userId }) {
       {error && <div className="error-text">{error}</div>}
       <form onSubmit={submit}>
         <div className="field"><label>동호회명</label><input required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="field">
+          <label>동호회 소개</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="어떤 활동을 하는 동호회인지 간단히 소개해 주세요. 동호회 목록에 표시됩니다."
+            rows={3}
+          />
+        </div>
         <div className="field">
           <label>신청서 파일</label>
           <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
