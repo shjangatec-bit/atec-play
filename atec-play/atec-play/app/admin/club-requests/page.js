@@ -13,7 +13,7 @@ export default async function ClubRequestsPage() {
   const supabase = createClient();
   const { data: requests } = await supabase
     .from("club_lifecycle_requests")
-    .select("id, type, proposed_name, club_id, requester_id, file_url, status, created_at, requester:requester_id(name), club:club_id(name)")
+    .select("id, type, proposed_name, proposed_description, club_id, requester_id, file_url, status, created_at, requester:requester_id(name), club:club_id(name)")
     .order("created_at", { ascending: false });
 
   return (
