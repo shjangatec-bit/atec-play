@@ -21,6 +21,7 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
   const supabase = createClient();
   const [userId, setUserId] = useState(users[0]?.id || "");
   const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState("");
 
   const selectedUser = users.find((u) => u.id === userId);
   const myMemberClubs = (selectedUser?.club_members || [])
@@ -31,6 +32,7 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
 
   function handleUserChange(newUserId) {
     setUserId(newUserId);
+    setFlash("");
     const newUser = users.find((u) => u.id === newUserId);
     const newUserClubs = (newUser?.club_members || []).filter((m) => m.status === "approved").map((m) => m.club);
     setClubId(newUserClubs[0]?.id || "");
@@ -54,8 +56,31 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
     });
   }
 
+  // 현재 권한 구성이 각 템플릿과 정확히 일치하는지 판정합니다.
+  // (템플릿이 다루는 범위의 권한만 비교 — 예: 회장 템플릿은 이 동호회의 동호회 단위 권한만 확인)
+  const matchedTemplates = useMemo(() => {
+    const result = {};
+    Object.entries(TEMPLATES).forEach(([name, codes]) => {
+      let scopeCodes;
+      if (name === "통합관리자") scopeCodes = [...GLOBAL_CODES, ...PERSONAL_CODES];
+      else if (name === "지원금담당자") scopeCodes = COMPANY_CODES;
+      else scopeCodes = CLUB_CODES;
+
+      const onCodes = scopeCodes.filter((c) => hasRow(c));
+      const wantCodes = scopeCodes.filter((c) => codes.includes(c));
+      result[name] =
+        onCodes.length > 0 &&
+        onCodes.length === wantCodes.length &&
+        wantCodes.every((c) => onCodes.includes(c));
+    });
+    return result;
+  }, [myPerms, clubId, selectedUser]);
+
+  const activeNames = Object.keys(matchedTemplates).filter((n) => matchedTemplates[n]);
+
   async function toggle(code) {
     setSaving(true);
+    setFlash("");
     const scope = scopeOf(code);
     const existing = myPerms.find((p) => {
       if (p.permission_code !== code) return false;
@@ -85,6 +110,7 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
 
   async function applyTemplate(name) {
     setSaving(true);
+    setFlash("");
     const codes = TEMPLATES[name];
 
     // 순서가 중요합니다: 먼저 "넣고" 그 다음에 "필요 없는 것만" 지웁니다.
@@ -110,7 +136,6 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
       return;
     }
 
-    // 템플릿에 없는 권한만 정리합니다.
     let clearQuery = supabase.from("user_permissions").delete().eq("user_id", userId);
     if (name === "통합관리자") {
       clearQuery = clearQuery.is("club_id", null).is("company_id", null);
@@ -142,6 +167,7 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
     }
 
     setSaving(false);
+    setFlash(`${selectedUser?.name} 님에게 "${name}" 권한이 적용되었습니다.`);
     router.refresh();
   }
 
@@ -155,11 +181,23 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
               <option key={u.id} value={u.id}>{u.name} ({u.company?.name})</option>
             ))}
           </select>
-          <div className="empty-note">
+
+          <div className="row-flex" style={{ gap: 6, margin: "10px 0 0", flexWrap: "wrap", alignItems: "center" }}>
+            <span className="co-tag">현재 권한 구성</span>
+            {activeNames.length > 0 ? (
+              activeNames.map((n) => (
+                <span key={n} className="badge badge-green">{n}</span>
+              ))
+            ) : (
+              <span className="badge badge-gray">사용자 지정</span>
+            )}
+          </div>
+
+          <div className="empty-note" style={{ padding: "8px 0 0" }}>
             동호회 단위 권한은 이 계정이 실제로 가입되어 있는 동호회로만 부여할 수 있습니다.
           </div>
           {myMemberClubs.length > 0 ? (
-            <select value={clubId} onChange={(e) => setClubId(e.target.value)} style={{ width: "100%", height: 38, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }}>
+            <select value={clubId} onChange={(e) => { setClubId(e.target.value); setFlash(""); }} style={{ width: "100%", height: 38, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px" }}>
               {myMemberClubs.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -170,20 +208,45 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
             </div>
           )}
         </div>
+
         <div className="card">
           <div className="section-title">기본 템플릿 적용</div>
           <div className="row-flex" style={{ gap: 8, flexWrap: "wrap" }}>
             {Object.keys(TEMPLATES).map((name) => {
               const needsClub = ["회장", "총무", "회원"].includes(name);
               const disabled = saving || (needsClub && myMemberClubs.length === 0);
+              const active = matchedTemplates[name];
               return (
-                <button key={name} className="btn-sm btn-outline" disabled={disabled} onClick={() => applyTemplate(name)} title={disabled && needsClub ? "가입된 동호회가 없어 사용할 수 없습니다" : undefined}>
-                  {name}
+                <button
+                  key={name}
+                  className={`btn-sm ${active ? "btn-approve" : "btn-outline"}`}
+                  disabled={disabled}
+                  onClick={() => applyTemplate(name)}
+                  title={disabled && needsClub ? "가입된 동호회가 없어 사용할 수 없습니다" : undefined}
+                >
+                  {active ? `✓ ${name}` : name}
                 </button>
               );
             })}
           </div>
-          <div className="empty-note">템플릿을 누르면 그 템플릿이 정의한 권한 구성으로 정확히 맞춰집니다(더 많이 켜져 있던 항목은 꺼지고, 부족했던 항목은 켜집니다). 이후 아래에서 개별로 조정할 수 있습니다. (회장·총무·회원 템플릿은 선택한 동호회에 이미 가입되어 있는 계정이면 회원현황의 직책 표시도 함께 바뀝니다)</div>
+
+          {flash && (
+            <div
+              style={{
+                marginTop: 12, padding: "9px 12px", borderRadius: 8,
+                background: "rgba(34,150,94,0.10)", border: "1px solid rgba(34,150,94,0.30)",
+                fontSize: 12.5, color: "var(--ink-2)",
+              }}
+            >
+              {flash}
+            </div>
+          )}
+
+          <div className="empty-note" style={{ paddingTop: 10 }}>
+            체크 표시된 버튼이 현재 적용된 권한 구성입니다. 템플릿을 누르면 그 구성으로 정확히 맞춰집니다(더 많이 켜져 있던 항목은 꺼지고, 부족했던 항목은 켜집니다). 이후 아래에서 개별로 조정하면 "사용자 지정"으로 표시됩니다.
+            <br />
+            회장·총무·회원 템플릿은 위에서 선택한 동호회에 적용되며, 회원현황의 직책 표시도 함께 바뀝니다.
+          </div>
         </div>
       </div>
 
