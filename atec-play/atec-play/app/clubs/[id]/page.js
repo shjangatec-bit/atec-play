@@ -58,12 +58,17 @@ export default async function ClubDetailPage({ params }) {
       .order("activity_date", { ascending: false });
     reportPosts = r || [];
 
+    // 참석자 체크 목록 — 현재 회원 + 탈회한 이력이 있는 사람까지 포함합니다.
+    // (지난달 활동에 참석했는데 이번 달에 탈회·퇴사한 경우에도 보고서에 체크할 수 있어야 하기 때문)
     const { data: cm } = await supabase
       .from("club_members")
-      .select("user_id, user:user_id(name, company:company_id(name))")
+      .select("user_id, status, user:user_id(name, company:company_id(name))")
       .eq("club_id", clubId)
-      .eq("status", "approved");
-    clubMembersForCheck = cm || [];
+      .in("status", ["approved", "withdrawn"]);
+    clubMembersForCheck = (cm || []).sort((a, b) => {
+      if (a.status !== b.status) return a.status === "approved" ? -1 : 1;
+      return (a.user?.name || "").localeCompare(b.user?.name || "");
+    });
   }
 
   const canApprove = !isGuest && hasPermission(permissions, "CLUB_MEMBER_APPROVE", { clubId });
