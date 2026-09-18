@@ -41,6 +41,17 @@ export default async function StatsPage() {
             <div className="crumb">관리자</div>
             <h1>전체 통계</h1>
           </div>
+          {hasPermission(permissions, "ACC_APPROVE") && (
+            <div className="top-actions">
+              <a
+                className="btn-sm btn-outline"
+                href="/api/admin/backup"
+                title="전체 데이터를 ZIP 파일로 내려받습니다 (월 1회 권장)"
+              >
+                ⬇ 전체 백업 다운로드
+              </a>
+            </div>
+          )}
         </div>
         <div className="grid-4" style={{ marginBottom: 16 }}>
           <div className="card"><div className="metric-label">전체 임직원</div><div className="metric-value">{users?.length ?? 0}</div></div>
