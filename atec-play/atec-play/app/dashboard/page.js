@@ -12,23 +12,42 @@ export default async function DashboardPage() {
   const isAdmin = hasPermission(permissions, "ACC_APPROVE");
   const isBudgetOfficer = hasPermission(permissions, "CLUB_BUDGET_DISBURSE", { companyId: profile.company_id });
 
-  const [{ count: pendingAccounts }, { count: activeClubs }, { count: totalUsers }, { count: pendingClubRequests }] =
-    await Promise.all([
-      supabase.from("users").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("clubs").select("*", { count: "exact", head: true }).eq("status", "active"),
-      supabase.from("users").select("*", { count: "exact", head: true }).eq("status", "approved"),
-      supabase
-        .from("club_lifecycle_requests")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending"),
-    ]);
+  const now = new Date();
 
-  // 내가 가입한 동호회 (역할 포함)
-  const { data: myClubs } = await supabase
-    .from("club_members")
-    .select("status, role_label, club:club_id(id, name)")
-    .eq("user_id", authUser.id)
-    .eq("status", "approved");
+  // 관리자 카드용 카운트, 예산 담당 카운트, 내 동호회 조회를 한 번에 병렬 실행합니다.
+  const [adminCounts, budgetResult, { data: myClubs }] = await Promise.all([
+    isAdmin
+      ? Promise.all([
+          supabase.from("users").select("*", { count: "exact", head: true }).eq("status", "pending"),
+          supabase.from("clubs").select("*", { count: "exact", head: true }).eq("status", "active"),
+          supabase.from("users").select("*", { count: "exact", head: true }).eq("status", "approved"),
+          supabase
+            .from("club_lifecycle_requests")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "pending"),
+        ])
+      : Promise.resolve(null),
+    isBudgetOfficer
+      ? supabase
+          .from("club_budget_disbursements")
+          .select("*", { count: "exact", head: true })
+          .eq("company_id", profile.company_id)
+          .eq("year", now.getFullYear())
+          .eq("month", now.getMonth() + 1)
+          .eq("status", "unpaid")
+      : Promise.resolve(null),
+    // 내가 가입한 동호회 (역할 포함)
+    supabase
+      .from("club_members")
+      .select("status, role_label, club:club_id(id, name)")
+      .eq("user_id", authUser.id)
+      .eq("status", "approved"),
+  ]);
+
+  const [pendingAccounts, activeClubs, totalUsers, pendingClubRequests] = adminCounts
+    ? adminCounts.map((r) => r.count)
+    : [0, 0, 0, 0];
+  const budgetPendingCount = budgetResult?.count || 0;
 
   // 내가 회장/총무인 동호회 각각의 가입 대기 인원, 최근 게시글
   const leaderClubIds = (myClubs || [])
@@ -38,40 +57,27 @@ export default async function DashboardPage() {
   let pendingByClub = {};
   let recentPostsByClub = {};
   if (leaderClubIds.length > 0) {
-    const { data: pendingMembers } = await supabase
-      .from("club_members")
-      .select("club_id")
-      .in("club_id", leaderClubIds)
-      .eq("status", "pending");
+    const [{ data: pendingMembers }, { data: recentPosts }] = await Promise.all([
+      supabase
+        .from("club_members")
+        .select("club_id")
+        .in("club_id", leaderClubIds)
+        .eq("status", "pending"),
+      supabase
+        .from("posts")
+        .select("club_id, title, type, created_at")
+        .in("club_id", leaderClubIds)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
     (pendingMembers || []).forEach((m) => {
       pendingByClub[m.club_id] = (pendingByClub[m.club_id] || 0) + 1;
     });
 
-    const { data: recentPosts } = await supabase
-      .from("posts")
-      .select("club_id, title, type, created_at")
-      .in("club_id", leaderClubIds)
-      .order("created_at", { ascending: false })
-      .limit(20);
     (recentPosts || []).forEach((p) => {
       if (!recentPostsByClub[p.club_id]) recentPostsByClub[p.club_id] = [];
       if (recentPostsByClub[p.club_id].length < 3) recentPostsByClub[p.club_id].push(p);
     });
-  }
-
-  let budgetPendingCount = 0;
-  if (isBudgetOfficer) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const { count } = await supabase
-      .from("club_budget_disbursements")
-      .select("*", { count: "exact", head: true })
-      .eq("company_id", profile.company_id)
-      .eq("year", year)
-      .eq("month", month)
-      .eq("status", "unpaid");
-    budgetPendingCount = count || 0;
   }
 
   return (

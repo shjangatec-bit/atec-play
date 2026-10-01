@@ -10,16 +10,17 @@ export async function getCurrentProfile() {
 
   if (!authUser) return { authUser: null, profile: null, permissions: [] };
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("*, company:company_id(id, name)")
-    .eq("id", authUser.id)
-    .single();
-
-  const { data: permRows } = await supabase
-    .from("user_permissions")
-    .select("permission_code, club_id, company_id")
-    .eq("user_id", authUser.id);
+  const [{ data: profile }, { data: permRows }] = await Promise.all([
+    supabase
+      .from("users")
+      .select("*, company:company_id(id, name)")
+      .eq("id", authUser.id)
+      .single(),
+    supabase
+      .from("user_permissions")
+      .select("permission_code, club_id, company_id")
+      .eq("user_id", authUser.id),
+  ]);
 
   return { authUser, profile, permissions: permRows || [] };
 }
