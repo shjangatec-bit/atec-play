@@ -34,15 +34,14 @@ export default function LoginPage() {
       .single();
 
     if (profile?.status === "pending") {
-      router.push("/pending");
+      router.replace("/pending");
     } else if (profile?.status === "approved") {
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } else {
       setError("계정이 정지되었거나 반려된 상태입니다. 통합관리자에게 문의해주세요.");
       setLoading(false);
       return;
     }
-    router.refresh();
   }
 
   return (
