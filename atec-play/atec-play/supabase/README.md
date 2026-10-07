@@ -1,31 +1,49 @@
 # Supabase 보안(RLS) 적용 가이드
 
+현재 DB 는 RLS 가 모든 표에서 켜져 있고 정책이 39개 있습니다. 대부분 적절하지만, 아래 **실제로 악용 가능한 6곳**이 있어
+그 부분만 고치는 SQL 을 만들었습니다. (전체 정책을 새로 만드는 방식은 `reference/` 에 보관만 합니다.)
+
+## 발견된 문제 (로컬에서 재현·검증 완료)
+| # | 정책 | 문제 | 수정 |
+|---|---|---|---|
+| 1 | `users_update_self` | 본인이 `status` 를 `approved` 로 바꿔 **스스로 가입 승인** 가능 | 정책 삭제 |
+| 2 | `users_insert_self` | `approved` 상태로 가입 가능 | `pending` 만 허용 |
+| 3 | `members_insert_self` | 동호회에 스스로 **회장·승인** 상태로 삽입 가능 | `pending` + `회원` 만 허용 |
+| 4 | `members_update_self` | 본인 가입 상태·직책 변경 가능 | 트리거로 `탈회 신청` 표시만 허용 |
+| 5 | `members_select` / `clubs_select` / `permissions_select` | **로그인 없이도** 조회 가능 | 로그인 사용자만 |
+| 6 | `posts_insert` | 일반 글쓰기 권한만으로 **활동보고서(지원금 근거)** 작성 가능 | 보고서 작성 권한 요구 |
+
+## 파일
 | 파일 | 용도 |
 |---|---|
-| `01_rls_audit.sql` | 현재 DB 보안 상태 점검 (읽기 전용) |
-| `02_rls_policies_DRAFT.sql` | RLS 정책 초안 (**운영 적용 전 반드시 테스트 프로젝트에서 먼저**) |
-| `03_rls_rollback.sql` | 문제 발생 시 응급 복구 |
-| `tests/` | 정책이 의도대로 동작하는지 로컬 PostgreSQL 에서 검증하는 시나리오 (65건) |
+| `01_rls_audit.sql` | 현재 보안 상태 점검 (읽기 전용) |
+| `02_fix_existing_policies.sql` | **필수** 수정 (위 6곳) |
+| `03_fix_rollback.sql` | 원래 정책으로 되돌리기 (02·04 모두) |
+| `04_optional_tighten_and_fix.sql` | **선택**: 지원금 조회 범위 축소, 회장·계정담당 업무가 DB 에서 막혀 있는 문제 해소 |
+| `tests/` | 로컬 PostgreSQL 검증 시나리오 (기존 39개 정책 재현 포함) |
+| `reference/` | 참고용 보관본. **적용하지 마세요.** |
 
 ## 적용 순서
-1. `/api/admin/backup` 으로 전체 백업을 받습니다.
-2. SQL Editor 에서 `01_rls_audit.sql` 을 실행하고, 결과의 [A][B][C][G] 를 확인합니다.
-   - [B]/[C] 에 `true` 조건의 느슨한 정책이 있으면 **먼저 삭제**해야 합니다. (정책은 OR 로 합쳐져서, 남아 있으면 제한이 무력화됩니다.)
-3. **테스트용 Supabase 프로젝트**(운영 데이터 복원본)에서 `02_rls_policies_DRAFT.sql` 을 실행합니다.
-4. 02 파일 맨 아래 체크리스트대로 일반 회원 / 회장 / 통합관리자 / 지급 담당 계정으로 화면을 직접 확인합니다.
-5. 이상이 없으면 운영에 같은 순서로 적용합니다. 문제가 생기면 `03_rls_rollback.sql` 을 실행합니다.
+1. `/api/admin/backup` 으로 전체 백업.
+2. (권장) 테스트 프로젝트에서 `02` 를 먼저 실행해 화면 확인.
+3. 운영에서 `02_fix_existing_policies.sql` 실행. 이상이 있으면 `03_fix_rollback.sql`.
+4. `04` 는 내용을 읽어 본 뒤 필요할 때만 적용.
 
 ## 자동 테스트 (선택)
-로컬 PostgreSQL 에서 정책 로직만 검증합니다. (Supabase 의 `auth.uid()` 는 모의 함수로 대체)
 ```
 createdb rlstest
 psql -d rlstest -f supabase/tests/mock_schema.sql
-psql -d rlstest -f supabase/02_rls_policies_DRAFT.sql
-psql -d rlstest -f supabase/tests/rls_scenarios.sql   # 마지막에 passed / failed 요약 출력
+psql -d rlstest -f supabase/tests/existing_policies_mock.sql
+psql -d rlstest -f supabase/02_fix_existing_policies.sql
+psql -d rlstest -v ex=deny -v optexp=deny -v optrev=allow -f supabase/tests/fix_scenarios.sql
 ```
-※ `mock_schema.sql` 은 앱 코드에서 쓰는 컬럼만으로 만든 가짜 스키마입니다. 실제 DB 의 제약·컬럼과 다를 수 있으므로 위 3~4단계 확인은 생략하지 마세요.
+04 까지 적용했다면 마지막 줄의 변수를 `-v optexp=allow -v optrev=deny` 로 바꾸세요.
+`-v ex=allow` 로 02 적용 전에 실행하면 취약점이 실제로 뚫리는 것을 재현할 수 있습니다.
+
+※ 테스트의 `has_global_perm` 등 도우미 함수는 **실제 DB 의 함수를 모의 구현**한 것입니다. 실제 함수 정의와 다를 수 있으므로
+  운영 적용 전 화면 확인(관리자·회장·일반회원·가입대기 계정)은 생략하지 마세요.
 
 ## 알려진 한계
-- 스토리지(`club-files` 버킷) 정책은 주석으로만 제공됩니다. 현재 버킷 설정을 확인한 뒤 적용하세요.
-- 가입 대기(게스트) 회원이 모든 동호회의 공지·일반·사진 게시글을 볼 수 있는 현재 앱 동작을 그대로 유지했습니다. 막으려면 `rls_posts_select` 를 수정하세요.
-- 승인된 회원은 서로의 이메일을 포함한 `users` 행을 조회할 수 있습니다. 필요하면 별도 뷰로 분리하는 것을 권장합니다.
+- 스토리지(`club-files`) 정책은 확인만 했습니다(버킷은 비공개).
+- 승인 회원끼리는 서로의 이메일을 포함한 `users` 행을 조회할 수 있습니다.
+- 가입 대기(게스트) 회원은 현재 정책상 게시글 조회가 불가합니다(`posts_select` 가 승인 회원만 허용).
