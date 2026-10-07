@@ -27,6 +27,7 @@
 | `02_fix_existing_policies.sql` | **필수** 수정 (위 6곳) |
 | `03_fix_rollback.sql` | 원래 정책으로 되돌리기 (02·04 모두) |
 | `04_optional_tighten_and_fix.sql` | **선택**: 지원금 조회 범위 축소, 회장·계정담당 업무가 DB 에서 막혀 있는 문제 해소 |
+| `04_optional_rollback.sql` | 04 만 되돌리기 (02 의 보안 수정은 유지) |
 | `05_dedupe_user_permissions.sql` | **권장**: 같은 권한이 여러 줄로 중복 저장된 것 정리 + 재발 방지 (아래 '권한 중복 문제' 참고) |
 | `tests/` | 로컬 PostgreSQL 검증 시나리오 (기존 39개 정책 재현 포함) |
 | `reference/` | 참고용 보관본. **적용하지 마세요.** |
