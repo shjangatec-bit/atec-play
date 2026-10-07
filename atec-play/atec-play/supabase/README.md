@@ -28,6 +28,7 @@
 | `03_fix_rollback.sql` | 원래 정책으로 되돌리기 (02·04 모두) |
 | `04_optional_tighten_and_fix.sql` | **선택**: 지원금 조회 범위 축소, 회장·계정담당 업무가 DB 에서 막혀 있는 문제 해소 |
 | `04_optional_rollback.sql` | 04 만 되돌리기 (02 의 보안 수정은 유지) |
+| `06_revoke_function_execute.sql` | **권장**: Security Advisor 경고 대응 — DB 함수를 외부에서 직접 호출(RPC)하지 못하게 실행 권한 회수 |
 | `05_dedupe_user_permissions.sql` | **권장**: 같은 권한이 여러 줄로 중복 저장된 것 정리 + 재발 방지 (아래 '권한 중복 문제' 참고) |
 | `tests/` | 로컬 PostgreSQL 검증 시나리오 (기존 39개 정책 재현 포함) |
 | `reference/` | 참고용 보관본. **적용하지 마세요.** |
@@ -56,3 +57,10 @@ psql -d rlstest -v ex=deny -v optexp=deny -v optrev=allow -f supabase/tests/fix_
 - 스토리지(`club-files`) 정책은 확인만 했습니다(버킷은 비공개).
 - 승인 회원끼리는 서로의 이메일을 포함한 `users` 행을 조회할 수 있습니다.
 - 가입 대기(게스트) 회원은 현재 정책상 게시글 조회가 불가합니다(`posts_select` 가 승인 회원만 허용).
+
+## Security Advisor 경고 정리 (06)
+- **비로그인(anon)이 DB 함수를 직접 호출할 수 있던 경고**: 06 으로 해소됩니다.
+- **로그인 사용자 대상 경고(`has_*_perm`, `is_approved`)**: 남습니다. RLS 정책이 로그인 사용자 권한으로 이 함수들을 호출하므로
+  회수하면 앱이 동작하지 않습니다. 이 함수들은 호출한 "본인"의 권한만 조회하므로 정보가 새지 않아 감수 가능한 경고입니다.
+  (완전히 없애려면 함수를 API 로 노출되지 않는 별도 스키마로 옮기고 모든 정책을 고쳐야 합니다.)
+- **유출 비밀번호 차단(Leaked Password Protection)**: SQL 이 아니라 Authentication 설정입니다. 요금제에 따라 사용 불가일 수 있습니다.
