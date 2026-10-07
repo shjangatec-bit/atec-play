@@ -7,7 +7,8 @@
 --   2. users_update_self      : 삭제 (지금은 본인이 status 를 approved 로 바꿔 스스로 승인 가능)
 --   3. members_insert_self    : 가입 신청은 pending + '회원' 으로만 (지금은 스스로 '회장'·approved 로 삽입 가능)
 --   4. members_update_self    : 본인 행은 '탈회 신청' 표시만 가능하도록 트리거로 제한 (지금은 status·직책 변경 가능)
---   5. members_select / clubs_select / permissions_select : 로그인 전(anon)에는 조회 불가로 (지금은 비로그인도 읽힘)
+--   5. members_select / clubs_select / permissions_select : 대상을 로그인 사용자로 명시적으로 고정
+--      (이미 그렇게 되어 있었을 수 있어 변화가 없을 수 있음. members_select 는 승인 회원·본인 행으로 축소)
 --   6. posts_insert           : 활동보고서는 보고서 작성 권한이 있어야만 (지금은 일반 글쓰기 권한만으로 보고서 작성 가능)
 --
 -- 적용 전: /api/admin/backup 으로 백업, 가능하면 테스트 프로젝트에서 먼저 실행하세요.

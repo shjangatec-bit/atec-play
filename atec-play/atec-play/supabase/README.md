@@ -10,7 +10,7 @@
 | 2 | `users_insert_self` | `approved` 상태로 가입 가능 | `pending` 만 허용 |
 | 3 | `members_insert_self` | 동호회에 스스로 **회장·승인** 상태로 삽입 가능 | `pending` + `회원` 만 허용 |
 | 4 | `members_update_self` | 본인 가입 상태·직책 변경 가능 | 트리거로 `탈회 신청` 표시만 허용 |
-| 5 | `members_select` / `clubs_select` / `permissions_select` | **로그인 없이도** 조회 가능 | 로그인 사용자만 |
+| 5 | `members_select` / `clubs_select` / `permissions_select` | 대상 역할이 지정되지 않았다면 로그인 없이도 조회 가능 (※ 실제 DB 에서는 이미 로그인 사용자 전용이었을 가능성이 높아 **확인하지 못한 추정**) | 대상을 로그인 사용자로 명시적으로 고정 (`members_select` 는 승인 회원·본인 행만으로도 축소) |
 | 6 | `posts_insert` | 일반 글쓰기 권한만으로 **활동보고서(지원금 근거)** 작성 가능 | 보고서 작성 권한 요구 |
 
 ## 권한 중복 문제 (권한을 꺼도 회수되지 않던 버그)
