@@ -89,8 +89,18 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
       return true;
     });
 
+    // 끌 때는 같은 권한의 중복 행까지 모두 지웁니다. (id 하나만 지우면 중복 행이 남아 권한이 회수되지 않습니다)
+    let revokeQuery = supabase
+      .from("user_permissions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("permission_code", code);
+    if (scope === "club") revokeQuery = revokeQuery.eq("club_id", clubId);
+    else if (scope === "company") revokeQuery = revokeQuery.is("club_id", null).eq("company_id", selectedUser?.company?.id);
+    else revokeQuery = revokeQuery.is("club_id", null).is("company_id", null);
+
     const { error } = existing
-      ? await supabase.from("user_permissions").delete().eq("id", existing.id)
+      ? await revokeQuery
       : await supabase.from("user_permissions").insert({
           user_id: userId,
           permission_code: code,
