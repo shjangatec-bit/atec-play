@@ -4,6 +4,7 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import PermissionsManager from "./PermissionsManager";
 
+import { ok } from "@/lib/db";
 export default async function AdminPermissionsPage() {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -11,7 +12,7 @@ export default async function AdminPermissionsPage() {
   if (!hasPermission(permissions, "PERM_MANAGE")) redirect("/dashboard");
 
   const supabase = createClient();
-  const [{ data: users }, { data: clubs }, { data: allPerms }, { data: master }] = await Promise.all([
+  const [{ data: users }, { data: clubs }, { data: allPerms }, { data: master }] = (await Promise.all([
     supabase
       .from("users")
       .select("id, name, company:company_id(id, name), club_members!user_id(status, club:club_id(id, name))")
@@ -20,7 +21,7 @@ export default async function AdminPermissionsPage() {
     supabase.from("clubs").select("id, name").order("name"),
     supabase.from("user_permissions").select("id, user_id, club_id, company_id, permission_code"),
     supabase.from("permissions").select("code, name, description").order("code"),
-  ]);
+  ])).map((r) => ok(r, "권한 설정 데이터"));
 
   return (
     <div className="app-shell">

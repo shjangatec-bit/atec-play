@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 
+import { ok } from "@/lib/db";
 export default async function DashboardPage() {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   const now = new Date();
 
   // 관리자 카드용 카운트, 예산 담당 카운트, 내 동호회 조회를 한 번에 병렬 실행합니다.
-  const [adminCounts, budgetResult, { data: myClubs }] = await Promise.all([
+  const [adminCountsRaw, budgetRaw, myClubsRaw] = await Promise.all([
     isAdmin
       ? Promise.all([
           supabase.from("users").select("*", { count: "exact", head: true }).eq("status", "pending"),
@@ -44,6 +45,10 @@ export default async function DashboardPage() {
       .eq("status", "approved"),
   ]);
 
+  const adminCounts = adminCountsRaw ? adminCountsRaw.map((r) => ok(r, "관리자 현황")) : null;
+  const budgetResult = budgetRaw ? ok(budgetRaw, "지원금 현황") : null;
+  const { data: myClubs } = ok(myClubsRaw, "내 동호회");
+
   const [pendingAccounts, activeClubs, totalUsers, pendingClubRequests] = adminCounts
     ? adminCounts.map((r) => r.count)
     : [0, 0, 0, 0];
@@ -57,7 +62,7 @@ export default async function DashboardPage() {
   let pendingByClub = {};
   let recentPostsByClub = {};
   if (leaderClubIds.length > 0) {
-    const [{ data: pendingMembers }, { data: recentPosts }] = await Promise.all([
+    const [{ data: pendingMembers }, { data: recentPosts }] = (await Promise.all([
       supabase
         .from("club_members")
         .select("club_id")
@@ -69,7 +74,7 @@ export default async function DashboardPage() {
         .in("club_id", leaderClubIds)
         .order("created_at", { ascending: false })
         .limit(20),
-    ]);
+    ])).map((r) => ok(r, "동호회 현황"));
     (pendingMembers || []).forEach((m) => {
       pendingByClub[m.club_id] = (pendingByClub[m.club_id] || 0) + 1;
     });

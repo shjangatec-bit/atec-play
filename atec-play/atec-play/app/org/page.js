@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 
+import { ok } from "@/lib/db";
 export default async function OrgPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -14,18 +15,18 @@ export default async function OrgPage({ searchParams }) {
   const viewCompanyOnly = hasPermission(permissions, "ORG_VIEW_COMPANY", { companyId: profile.company_id });
 
   // 회장/총무/일반 회원 모두: 본인이 가입(승인)된 동호회 목록
-  const { data: memberRows } = await supabase
+  const { data: memberRows } = ok(await supabase
     .from("club_members")
     .select("club_id, role_label, club:club_id(id, name)")
     .eq("user_id", authUser.id)
-    .eq("status", "approved");
+    .eq("status", "approved"), "내 동호회");
   const myClubs = (memberRows || []).map((m) => m.club);
   const myClubIds = myClubs.map((c) => c.id);
   const viewMyClubsOnly = !viewAll && !viewCompanyOnly;
 
-  const { data: companies } = await supabase.from("companies").select("id, name").order("name");
-  const { data: allClubs } = await supabase.from("clubs").select("id, name").order("name");
-  const { data: permMaster } = await supabase.from("permissions").select("code, name");
+  const { data: companies } = ok(await supabase.from("companies").select("id, name").order("name"), "회사 목록");
+  const { data: allClubs } = ok(await supabase.from("clubs").select("id, name").order("name"), "동호회 목록");
+  const { data: permMaster } = ok(await supabase.from("permissions").select("code, name"), "권한 목록");
   const permNameMap = Object.fromEntries((permMaster || []).map((p) => [p.code, p.name]));
 
   // 회장/총무/일반 회원 모드에서는 동호회 필터 선택지를 본인이 가입한 동호회로 제한
@@ -42,7 +43,7 @@ export default async function OrgPage({ searchParams }) {
   const companyFilter = viewAll ? searchParams?.company : viewCompanyOnly ? profile.company_id : null;
   if (companyFilter) query = query.eq("company_id", companyFilter);
 
-  const { data: users } = await query;
+  const { data: users } = ok(await query, "동호회원 명단");
 
   let clubFilter = searchParams?.club || "";
   if (viewMyClubsOnly && clubFilter && !myClubIds.includes(clubFilter)) clubFilter = ""; // 본인 가입 동호회 외 접근 차단

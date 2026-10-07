@@ -4,6 +4,7 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import AccountRow from "./AccountRow";
 
+import { ok } from "@/lib/db";
 export default async function AdminAccountsPage() {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -11,10 +12,10 @@ export default async function AdminAccountsPage() {
   if (!hasPermission(permissions, "ACC_APPROVE")) redirect("/dashboard");
 
   const supabase = createClient();
-  const { data: users } = await supabase
+  const { data: users } = ok(await supabase
     .from("users")
     .select("id, name, email, status, created_at, company:company_id(name)")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false }), "계정 목록");
 
   return (
     <div className="app-shell">
