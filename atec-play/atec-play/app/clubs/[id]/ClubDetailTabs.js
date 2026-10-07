@@ -4,10 +4,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import MonthlyReportPrint from "./MonthlyReportPrint";
 
+import { MONTHLY_CLUB_CAP, calcSubsidy } from "@/lib/subsidy";
 const SIGNED_URL_TTL = 31536000;
-const PER_PERSON_CAP = 30000;
-const MONTHLY_CLUB_CAP = 500000;
-const EXPENSE_RATIO = 0.5;
 
 const TABS = [
   { key: "members", label: "회원 현황" },
@@ -622,9 +620,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
   const expenseNum = Number(expense) || 0;
-  const byExpense = Math.floor(expenseNum * EXPENSE_RATIO);
-  const byHead = checkedCount * PER_PERSON_CAP;
-  const estimate = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
+  const { byExpense, byHead, amount: estimate } = calcSubsidy(expenseNum, checkedCount);
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
