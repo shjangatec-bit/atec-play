@@ -21,7 +21,7 @@ order by tablename, cmd, policyname;
 select tablename, policyname, cmd, qual, with_check
 from pg_policies
 where schemaname = 'public'
-  and (coalesce(qual, 'true') in ('true', '(true)') or coalesce(with_check, 'true') in ('true', '(true)'))
+  and (qual in ('true', '(true)') or with_check in ('true', '(true)'))
 order by tablename;
 
 -- [D] 컬럼 타입 확인 — 02번 초안은 id 계열이 uuid 라고 가정하지 않고 text 로 비교하지만,
@@ -33,9 +33,9 @@ where table_schema = 'public'
 order by table_name, column_name;
 
 -- [E] 시연용 계정이 남아 있는지 (README 의 공개 비밀번호 Demo1234! 사용 계정일 수 있음)
-select u.id, u.email, u.name, u.status, u.created_at
+select u.id, u.email, u.name, u.status
 from public.users u
-order by u.created_at;
+order by u.email;
 
 -- [F] 통합관리자(전사 권한 보유자) 목록 — 의도한 사람만 있는지 확인하세요.
 select u.name, u.email, up.permission_code
