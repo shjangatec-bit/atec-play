@@ -6,7 +6,8 @@ import {
   EXPENSE_RATIO,
   calcSubsidy,
   allocateByCompany,
-  shareOfCompany,
+  companyShares,
+  projectMonthly,
 } from "../lib/subsidy.js";
 
 test("규칙 상수: 1인 3만원, 월 50만원, 비용의 50%", () => {
@@ -53,12 +54,6 @@ test("회사별 배분: 입력 배열을 변경하지 않음", () => {
   assert.equal(input[0].amount, undefined);
 });
 
-test("자사 몫: 전체 인원 대비 비율, 원 단위 내림, 전체 0명이면 0원", () => {
-  assert.equal(shareOfCompany(500000, 3, 10), 150000);
-  assert.equal(shareOfCompany(100000, 1, 3), 33333);
-  assert.equal(shareOfCompany(100000, 1, 0), 0);
-});
-
 // ── 기존 화면에 복사돼 있던 인라인 계산식과 결과가 완전히 같은지 대량 비교 (리팩터링 안전장치) ──
 const legacyClub = (expense, headcount) => {
   const byExpense = Math.floor(expense * 0.5);
@@ -77,8 +72,6 @@ const legacyAllocate = (amount, rows, attendeeCount) => {
   });
   return out;
 };
-const legacyShare = (clubTotal, myCount, totalCount) =>
-  totalCount > 0 ? Math.floor((clubTotal * myCount) / totalCount) : 0;
 
 test("기존 인라인 계산식과 결과 동일 (무작위 5만 건)", () => {
   let seed = 12345; // 재현 가능한 난수
@@ -93,7 +86,95 @@ test("기존 인라인 계산식과 결과 동일 (무작위 5만 건)", () => {
     const a = calcSubsidy(expense, attendeeCount);
     assert.deepEqual(a, legacyClub(expense, attendeeCount));
     assert.deepEqual(allocateByCompany(a.amount, rows, attendeeCount), legacyAllocate(a.amount, rows, attendeeCount));
-    const my = rnd(attendeeCount + 1);
-    assert.equal(shareOfCompany(a.amount, my, attendeeCount), legacyShare(a.amount, my, attendeeCount));
+  }
+});
+
+// ── 회사별 몫: 월간 보고서와 지급 관리 화면이 같은 함수를 쓰므로 항상 같은 결과여야 함 ──
+const users = (n, prefix) => new Set(Array.from({ length: n }, (_, i) => `${prefix}${i}`));
+
+test("회사별 몫: 모든 회사 몫의 합 = 동호회 지급액 (끝자리는 마지막 회사)", () => {
+  // 3개 회사 3·3·1명, 총액 100,000원
+  const rows = companyShares(100000, { 에이텍: users(3, "a"), 에이텍컴퓨터: users(3, "b"), 에이텍씨앤: users(1, "c") });
+  assert.deepEqual(rows.map((r) => [r.company, r.amount]), [["에이텍", 42857], ["에이텍컴퓨터", 42857], ["에이텍씨앤", 14286]]);
+  assert.equal(rows.reduce((s, r) => s + r.amount, 0), 100000);
+});
+
+test("회사별 몫: 인원이 같으면 회사명 가나다순으로 고정, 입력 순서가 달라도 결과 동일", () => {
+  const a = companyShares(100000, { 나사: users(1, "n"), 가사: users(1, "g"), 다사: users(1, "d") });
+  const b = companyShares(100000, new Map([["다사", users(1, "d")], ["가사", users(1, "g")], ["나사", users(1, "n")]]));
+  assert.deepEqual(a, b);
+  assert.deepEqual(a.map((r) => r.company), ["가사", "나사", "다사"]);
+  assert.equal(a.at(-1).amount, 100000 - 33333 * 2); // 끝자리는 마지막(다사)에
+});
+
+test("회사별 몫: 무작위 3만 건 — 합계 항상 일치, 입력 순서 무관, 음수 없음", () => {
+  let seed = 777;
+  const rnd = (n) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n);
+  for (let i = 0; i < 30000; i++) {
+    const companies = 1 + rnd(6);
+    const entries = Array.from({ length: companies }, (_, k) => [`회사${k}`, users(1 + rnd(9), `c${k}-`)]);
+    const total = entries.reduce((s, [, u]) => s + u.size, 0);
+    const { amount } = calcSubsidy(rnd(3_000_000), total);
+    const rows = companyShares(amount, Object.fromEntries(entries));
+    assert.equal(rows.reduce((s, r) => s + r.amount, 0), amount);
+    assert.ok(rows.every((r) => r.amount >= 0));
+    const shuffled = companyShares(amount, new Map([...entries].reverse()));
+    assert.deepEqual(shuffled, rows);
+  }
+});
+
+// ── 한도 사전 경고 ──
+const ids = (...n) => n.map((x) => `u${x}`);
+
+test("한도 경고: 월 상한(50만원)에 이미 도달한 달에는 늘지 않는다고 경고", () => {
+  const existing = [{ expense: 3_000_000, attendeeIds: ids(...Array.from({ length: 20 }, (_, i) => i)) }];
+  const p = projectMonthly(existing, { expense: 100000, attendeeIds: ids(1, 2) });
+  assert.equal(p.before.amount, 500000);
+  assert.equal(p.delta, 0);
+  assert.equal(p.binding, "cap");
+  assert.ok(p.warnings.some((w) => w.level === "warn" && /이미 월 한도/.test(w.text)));
+});
+
+test("한도 경고: 이번 보고서로 상한에 도달하면 남은 한도를 알려줌", () => {
+  const existing = [{ expense: 800000, attendeeIds: ids(1, 2, 3, 4, 5, 6, 7, 8, 9, 10) }]; // 40만 vs 30만 → 30만
+  const p = projectMonthly(existing, { expense: 3_000_000, attendeeIds: ids(11, 12, 13, 14, 15, 16, 17, 18, 19, 20) });
+  assert.equal(p.before.amount, 300000);
+  assert.equal(p.after.amount, 500000);
+  assert.equal(p.delta, 200000);
+  assert.ok(p.warnings.some((w) => /월 한도.*도달합니다/.test(w.text) && /남은 한도 200,000원/.test(w.text)));
+});
+
+test("한도 경고: 인원이 한도인데 비용만 늘리면 경고, 같은 달 중복 참석자는 인원에 안 늘어난다고 안내", () => {
+  const existing = [{ expense: 1_000_000, attendeeIds: ids(1, 2, 3) }]; // 인원 9만원이 한도
+  const p = projectMonthly(existing, { expense: 500000, attendeeIds: ids(1, 2, 3) });
+  assert.equal(p.binding, "head");
+  assert.equal(p.delta, 0);
+  assert.equal(p.newHeads, 0);
+  assert.equal(p.alreadyCounted, 3);
+  assert.ok(p.warnings.some((w) => w.level === "warn" && /참석 실인원 3명/.test(w.text)));
+  assert.ok(p.warnings.some((w) => /이미 집계되어 인원이 중복으로 늘지 않습니다/.test(w.text)));
+});
+
+test("한도 경고: 참석자 0명이면 경고, 비용이 한도면 정보 안내", () => {
+  const none = projectMonthly([], { expense: 100000, attendeeIds: [] });
+  assert.equal(none.after.amount, 0);
+  assert.ok(none.warnings.some((w) => /한 명도 체크하지 않았습니다/.test(w.text)));
+  const costBound = projectMonthly([], { expense: 100000, attendeeIds: ids(1, 2, 3, 4) }); // 비용 5만 < 인원 12만
+  assert.equal(costBound.binding, "expense");
+  assert.ok(costBound.warnings.some((w) => w.level === "info" && /비용의 50%\(50,000원\)가 한도/.test(w.text)));
+});
+
+test("한도 경고: 계산 결과는 calcSubsidy(합산 비용, 합산 실인원)와 항상 같다", () => {
+  let seed = 4242;
+  const rnd = (n) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n);
+  for (let i = 0; i < 20000; i++) {
+    const existing = Array.from({ length: rnd(4) }, () => ({ expense: rnd(800000), attendeeIds: ids(...Array.from({ length: rnd(8) }, () => rnd(15))) }));
+    const add = { expense: rnd(800000), attendeeIds: ids(...Array.from({ length: rnd(8) }, () => rnd(15))) };
+    const all = [...existing, add];
+    const heads = new Set(all.flatMap((r) => r.attendeeIds)).size;
+    const exp = all.reduce((s, r) => s + r.expense, 0);
+    const p = projectMonthly(existing, add);
+    assert.deepEqual(p.after, calcSubsidy(exp, heads));
+    assert.ok(p.delta >= 0);
   }
 });

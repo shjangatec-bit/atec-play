@@ -10,7 +10,7 @@ import WithdrawButton from "./WithdrawButton";
 import ClubDetailTabs from "./ClubDetailTabs";
 
 import { ok } from "@/lib/db";
-import { calcSubsidy, allocateByCompany } from "@/lib/subsidy";
+import { calcSubsidy, companyShares } from "@/lib/subsidy";
 export default async function ClubDetailPage({ params }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -152,13 +152,8 @@ export default async function ClubDetailPage({ params }) {
       const { byExpense, byHead, amount } = calcSubsidy(v.expense, attendeeCount);
 
       // 회사별 실인원(중복 제외)과 그 비율에 따른 지원금 배분
-      const companyRows = allocateByCompany(
-        amount,
-        Object.entries(v.companyCount)
-          .map(([co, set]) => ({ company: co, count: set.size }))
-          .sort((a, b) => b.count - a.count),
-        attendeeCount
-      );
+      // 회사별 몫: 지원금 지급 관리 화면과 같은 함수(companyShares)를 써서 항상 같은 금액이 나옵니다.
+      const companyRows = companyShares(amount, v.companyCount);
 
       const grossHeadcount = v.reports.reduce((s, r) => s + r.headcount, 0);
 

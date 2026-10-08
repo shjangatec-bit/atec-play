@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import ClubPermissionsReadonly from "./ClubPermissionsReadonly";
 
 // 이 화면은 "전사 권한(통합관리자)"과 "회사 권한(지원금담당자)"만 다룹니다.
 // 동호회 직책(회장·총무·회원)과 그에 따른 운영진 권한은 각 동호회 화면의 '직책 관리'에서 정하며,
@@ -229,6 +230,8 @@ export default function PermissionsManager({ users, allPerms, master }) {
           </tbody>
         </table>
       </div>
+
+      <ClubPermissionsReadonly user={selectedUser} allPerms={allPerms} />
     </>
   );
 }
