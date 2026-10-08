@@ -60,6 +60,11 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
   // (템플릿이 다루는 범위의 권한만 비교 — 예: 회장 템플릿은 이 동호회의 동호회 단위 권한만 확인)
   const matchedTemplates = useMemo(() => {
     const result = {};
+    // 회장·총무 템플릿은 권한 목록이 완전히 같아서 권한만으로는 구분할 수 없습니다.
+    // 그래서 이 동호회에서의 실제 직책(회원현황의 role_label)으로 둘 중 하나만 표시합니다.
+    const currentRole = (selectedUser?.club_members || []).find(
+      (m) => m.status === "approved" && m.club?.id === clubId
+    )?.role_label;
     Object.entries(TEMPLATES).forEach(([name, codes]) => {
       let scopeCodes;
       if (name === "통합관리자") scopeCodes = [...GLOBAL_CODES, ...PERSONAL_CODES];
@@ -72,6 +77,9 @@ export default function PermissionsManager({ users, clubs, allPerms, master }) {
         onCodes.length > 0 &&
         onCodes.length === wantCodes.length &&
         wantCodes.every((c) => onCodes.includes(c));
+      if ((name === "회장" || name === "총무") && (currentRole === "회장" || currentRole === "총무")) {
+        result[name] = result[name] && currentRole === name;
+      }
     });
     return result;
   }, [myPerms, clubId, selectedUser]);
