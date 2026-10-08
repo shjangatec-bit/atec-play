@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import MonthlyReportPrint from "./MonthlyReportPrint";
 import { RoleSelect, ChairChangePanel, ChairHistory } from "./RoleControls";
 
-import { MONTHLY_CLUB_CAP, calcSubsidy } from "@/lib/subsidy";
+import { MONTHLY_CLUB_CAP, projectMonthly } from "@/lib/subsidy";
 const SIGNED_URL_TTL = 31536000;
 
 const TABS = [
@@ -536,7 +536,15 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, isStaff, clubMember
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
   const expenseNum = Number(expense) || 0;
-  const { byExpense, byHead, amount: estimate } = calcSubsidy(expenseNum, checkedCount);
+  // 같은 달에 이미 등록된 보고서와 합산해서 지원금이 어떻게 달라지는지 미리 계산합니다. (월 한도·1인 3만원·비용 50% 사전 안내)
+  const ym = activityDate ? activityDate.slice(0, 7) : "";
+  const existingReports = ym
+    ? posts
+        .filter((p) => (p.activity_date || "").slice(0, 7) === ym)
+        .map((p) => ({ expense: Number(p.expense_amount) || 0, attendeeIds: (p.post_attendees || []).map((a) => a.user_id) }))
+    : [];
+  const alreadyCounted = new Set(existingReports.flatMap((r) => r.attendeeIds));
+  const projection = projectMonthly(existingReports, { expense: expenseNum, attendeeIds: Object.keys(checked).filter((id) => checked[id]) });
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -688,15 +696,44 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, isStaff, clubMember
                     />
                     {m.user?.name} <span className="co-tag">{m.user?.company?.name}</span>
                     {m.status === "withdrawn" && <span className="badge badge-gray">탈회</span>}
+                    {alreadyCounted.has(m.user_id) && (
+                      <span className="badge badge-amber" title="이달 다른 활동에 이미 참석자로 집계되어, 이번에 체크해도 인원(1인 3만원)이 늘지 않습니다.">이달 이미 집계</span>
+                    )}
                   </label>
                 ))}
             </div>
               <div className="empty-note" style={{ padding: "8px 0 0", lineHeight: 1.8 }}>
-                비용의 50% <b className="mono">{byExpense.toLocaleString()}원</b> · 참석 {checkedCount}명 × 3만원 <b className="mono">{byHead.toLocaleString()}원</b> · 월 한도 <b className="mono">500,000원</b>
-                <br />
-                → 예상 지원금 <b className="mono" style={{ color: "var(--ink)", fontSize: 14 }}>{estimate.toLocaleString()}원</b>
-                <span style={{ marginLeft: 6 }}>(이 보고서 기준. 같은 달에 여러 건이면 합산해 다시 계산됩니다)</span>
+                {ym ? (
+                  <>
+                    <b>{ym.replace("-", "년 ")}월 누적 기준</b> (기존 보고서 {existingReports.length}건 + 이번 보고서)
+                    <br />
+                    비용 합계 <b className="mono">{projection.expense.toLocaleString()}원</b> → 50% <b className="mono">{projection.after.byExpense.toLocaleString()}원</b>
+                    {" · "}참석 실인원 {projection.headcount}명(이번에 새로 {projection.newHeads}명) × 3만원 <b className="mono">{projection.after.byHead.toLocaleString()}원</b>
+                    {" · "}월 한도 <b className="mono">{MONTHLY_CLUB_CAP.toLocaleString()}원</b>
+                    <br />
+                    → 이달 예상 지원금 <b className="mono" style={{ color: "var(--ink)", fontSize: 14 }}>{projection.after.amount.toLocaleString()}원</b>
+                    <span style={{ marginLeft: 6 }}>(이번 보고서로 {projection.delta >= 0 ? "+" : ""}{projection.delta.toLocaleString()}원, 등록 전 {projection.before.amount.toLocaleString()}원)</span>
+                  </>
+                ) : (
+                  <>활동일자를 입력하면 같은 달에 이미 등록된 보고서와 합산해서 예상 지원금과 한도를 안내합니다.</>
+                )}
               </div>
+              {ym && projection.warnings.length > 0 && (
+                <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                  {projection.warnings.map((w, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        padding: "8px 12px", borderRadius: 8, fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-2)",
+                        background: w.level === "warn" ? "rgba(217,119,6,0.10)" : "rgba(100,116,139,0.08)",
+                        border: `1px solid ${w.level === "warn" ? "rgba(217,119,6,0.35)" : "var(--line)"}`,
+                      }}
+                    >
+                      {w.level === "warn" ? "⚠ " : "ℹ "}{w.text}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="field">
               <label>첨부파일 (양식파일/증빙, 여러 개 선택 가능)</label>
