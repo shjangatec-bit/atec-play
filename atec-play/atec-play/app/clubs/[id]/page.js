@@ -42,7 +42,7 @@ export default async function ClubDetailPage({ params }) {
   if (!isGuest) {
     const { data: m } = ok(await supabase
       .from("club_members")
-      .select("id, role_label, status, applied_at, withdrawal_requested, user:user_id(id, name, company:company_id(name))")
+      .select("id, role_label, is_staff, status, applied_at, withdrawal_requested, user:user_id(id, name, company:company_id(name))")
       .eq("club_id", clubId)
       .order("applied_at"), "회원 현황");
     members = m || [];
@@ -70,18 +70,24 @@ export default async function ClubDetailPage({ params }) {
     });
   }
 
-  const canApprove = !isGuest && hasPermission(permissions, "CLUB_MEMBER_APPROVE", { clubId });
-  const canWriteReport = !isGuest && hasPermission(permissions, "CLUB_REPORT_WRITE", { clubId });
-  const canWritePost = !isGuest && hasPermission(permissions, "CLUB_POST_WRITE", { clubId });
-
-  // 이 동호회의 승인된 회원인지 (탈회 신청 버튼 노출에 사용)
-    const myMembership = members.find((m) => m.status === "approved" && m.user?.id === authUser.id);
+  // 권한은 "운영진 / 일반" 두 가지뿐입니다.
+  //  · 운영진(isStaff): 직책이 회장·총무인 승인 회원. DB(club_members.is_staff)가 직책에서 자동 계산합니다.
+  //  · 일반: 승인된 모든 회원 (열람, 게시글 작성)
+  const myMembership = members.find((m) => m.status === "approved" && m.user?.id === authUser.id);
   const isMemberOfThisClub = !isGuest && !!myMembership;
-    // 폐설 신청은 회장·총무만 가능합니다. 회원이 모두 빠진 동호회도 정리할 수 있도록
+  const isStaff = isMemberOfThisClub && !!myMembership.is_staff;
+  const canWritePost = isMemberOfThisClub;
+  const canWriteReport = isStaff;
+
+  // 직책 변경(총무↔회원)·회장 교체는 그 동호회 회장 또는 통합관리자만 할 수 있습니다.
+  // (직책에 따라 달라지는 유일한 기능이며, 서버(DB)에서도 같은 규칙으로 막고 있습니다.)
+  const isChair = isMemberOfThisClub && myMembership.role_label === "회장";
+  const isRoleAdmin = hasPermission(permissions, "PERM_MANAGE") || hasPermission(permissions, "ACC_MANAGE");
+  const canManageRoles = !isGuest && (isChair || isRoleAdmin);
+
+  // 폐설 신청은 운영진(회장·총무)만 가능합니다. 회원이 모두 빠진 동호회도 정리할 수 있도록
   // 폐설 승인 권한자(통합관리자)는 회원이 아니어도 신청할 수 있습니다.
-  const canRequestClose = !isGuest && (
-    (isMemberOfThisClub && canApprove) || hasPermission(permissions, "CLUB_CLOSE_APPROVE")
-  );
+  const canRequestClose = !isGuest && (isStaff || hasPermission(permissions, "CLUB_CLOSE_APPROVE"));
   let alreadyRequestedClose = false;
   if (canRequestClose && club.status === "active") {
     const { data: existingCloseReq } = ok(await supabase
@@ -94,17 +100,16 @@ export default async function ClubDetailPage({ params }) {
     alreadyRequestedClose = !!existingCloseReq;
   }
 
-  // 회원 권한 관리 탭용 데이터 (회장/총무만)
-  let memberPermissions = {};
-  if (canApprove) {
-    const { data: cp } = ok(await supabase
-      .from("user_permissions")
-      .select("user_id, permission_code")
-      .eq("club_id", clubId), "회원 권한");
-    (cp || []).forEach((row) => {
-      if (!memberPermissions[row.user_id]) memberPermissions[row.user_id] = [];
-      memberPermissions[row.user_id].push(row.permission_code);
-    });
+  // 회장 교체 이력 (이 동호회 승인 회원과 통합관리자에게만 보임)
+  let chairHistory = [];
+  if (!isGuest) {
+    const { data: hist } = ok(await supabase
+      .from("club_chair_history")
+      .select("id, changed_at, old_chair_new_role, note, old_chair:old_chair_user_id(name), new_chair:new_chair_user_id(name), changer:changed_by(name)")
+      .eq("club_id", clubId)
+      .order("changed_at", { ascending: false })
+      .limit(20), "회장 교체 이력");
+    chairHistory = hist || [];
   }
 
   // 월별 자동 집계
@@ -211,13 +216,16 @@ export default async function ClubDetailPage({ params }) {
               {club.description} · {club.status === "active" ? "운영중" : "폐설"}
             </div>
           </div>
-          {canApprove && <DescriptionEditor clubId={club.id} current={club.description} />}
-          {canApprove && <CoverImageUploader clubId={club.id} />}
+          {isStaff && <DescriptionEditor clubId={club.id} current={club.description} />}
+          {isStaff && <CoverImageUploader clubId={club.id} />}
                     {canRequestClose && club.status === "active" && (
             <CloseRequestButton clubId={club.id} userId={authUser.id} alreadyRequested={alreadyRequestedClose} />
           )}
-          {isMemberOfThisClub && (
+          {isMemberOfThisClub && !isChair && (
             <WithdrawButton memberId={myMembership.id} alreadyRequested={myMembership.withdrawal_requested} />
+          )}
+          {isChair && (
+            <span className="co-tag" title="회장은 회장 교체 후에 탈회할 수 있습니다.">회장은 회장 교체 후 탈회할 수 있습니다</span>
           )}
         </div>
 
@@ -229,11 +237,12 @@ export default async function ClubDetailPage({ params }) {
           monthly={monthly}
           clubMembersForCheck={clubMembersForCheck}
           currentUserId={authUser.id}
-          canApprove={canApprove}
+          isStaff={isStaff}
           canWriteReport={canWriteReport}
           canWritePost={canWritePost}
+          canManageRoles={canManageRoles}
+          chairHistory={chairHistory}
           isGuest={isGuest}
-          memberPermissions={memberPermissions}
         />
       </div>
     </div>

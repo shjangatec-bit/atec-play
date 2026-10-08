@@ -40,7 +40,7 @@ export default async function DashboardPage() {
     // 내가 가입한 동호회 (역할 포함)
     supabase
       .from("club_members")
-      .select("status, role_label, club:club_id(id, name)")
+      .select("status, role_label, is_staff, club:club_id(id, name)")
       .eq("user_id", authUser.id)
       .eq("status", "approved"),
   ]);
@@ -56,7 +56,7 @@ export default async function DashboardPage() {
 
   // 내가 회장/총무인 동호회 각각의 가입 대기 인원, 최근 게시글
   const leaderClubIds = (myClubs || [])
-    .filter((m) => m.role_label === "회장" || m.role_label === "총무")
+    .filter((m) => m.is_staff)   // 운영진(직책이 회장·총무) 여부는 DB 가 계산한 값만 사용
     .map((m) => m.club.id);
 
   let pendingByClub = {};

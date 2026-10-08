@@ -36,33 +36,14 @@ export default function RequestRow({ req, reviewerId }) {
         alert(
           "동호회는 생성됐지만 신청자를 회장으로 등록하는 데 실패했습니다: " +
             memberErr.message +
-            "\n동호회 상세 화면에서 회원현황을 확인하고 수동으로 등록해 주세요."
+            "\n신청자가 이 동호회에 가입 승인된 뒤, 관리자 메뉴의 '직책·권한 점검'에서 회장을 지정해 주세요."
         );
         setSaving(false);
         router.refresh();
         return;
       }
 
-      const chairmanCodes = ["CLUB_MEMBER_APPROVE", "CLUB_VIEW", "CLUB_POST_WRITE", "CLUB_REPORT_WRITE", "CLUB_REPORT_VIEW", "CLUB_BUDGET_VIEW"];
-      const { error: permErr } = await supabase.from("user_permissions").upsert(
-        chairmanCodes.map((code) => ({
-          user_id: req.requester_id,
-          club_id: club.id,
-          permission_code: code,
-          granted_by: reviewerId,
-        })),
-        { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true }
-      );
-      if (permErr) {
-        alert(
-          "동호회와 회장 등록은 됐지만 회장 권한 부여에 실패했습니다: " +
-            permErr.message +
-            "\n권한 설정 화면에서 회장 템플릿을 다시 적용해 주세요."
-        );
-        setSaving(false);
-        router.refresh();
-        return;
-      }
+      // 회장 권한(운영진)은 위에서 회장 직책으로 등록하면 DB 가 자동으로 부여합니다.
 
       const { error: reqErr } = await supabase
         .from("club_lifecycle_requests")
@@ -75,7 +56,7 @@ export default function RequestRow({ req, reviewerId }) {
         .eq("id", req.id);
       if (reqErr) {
         alert(
-          "동호회 생성과 권한 부여는 됐지만 신청 상태 갱신에 실패했습니다: " +
+          "동호회 생성과 회장 등록은 됐지만 신청 상태 갱신에 실패했습니다: " +
             reqErr.message +
             "\n화면을 새로고침한 뒤 신청 상태를 확인해 주세요."
         );

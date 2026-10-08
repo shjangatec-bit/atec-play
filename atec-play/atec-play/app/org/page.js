@@ -35,7 +35,7 @@ export default async function OrgPage({ searchParams }) {
   let query = supabase
     .from("users")
     .select(
-      "id, name, status, company:company_id(id, name), club_members!user_id(status, role_label, club:club_id(id, name)), user_permissions!user_id(permission_code, club_id, company_id)"
+      "id, name, status, company:company_id(id, name), club_members!user_id(status, role_label, is_staff, club:club_id(id, name)), user_permissions!user_id(permission_code, club_id, company_id)"
     )
     .eq("status", "approved")
     .order("name");
@@ -136,7 +136,9 @@ export default async function OrgPage({ searchParams }) {
               {filteredUsers.map((u) => {
                 const approvedClubs = (u.club_members || []).filter((m) => m.status === "approved");
                 const perms = u.user_permissions || [];
-                const uniqueCodes = [...new Set(perms.map((p) => p.permission_code))];
+                // 전사·회사 단위 권한만 나열합니다. 동호회 권한은 직책(운영진/일반)에서 자동으로 정해집니다.
+                const uniqueCodes = [...new Set(perms.filter((p) => p.club_id === null).map((p) => p.permission_code))];
+                const staffClubs = approvedClubs.filter((m) => m.is_staff);
                 return (
                   <tr key={u.id}>
                     <td style={{ whiteSpace: "nowrap" }}>{u.name}</td>
@@ -158,11 +160,16 @@ export default async function OrgPage({ searchParams }) {
                       ))}
                     </td>
                     <td>
-                      {uniqueCodes.length === 0 && (
+                      {uniqueCodes.length === 0 && staffClubs.length === 0 && (
                         <span className="empty-note" style={{ padding: 0, display: "inline" }}>
                           부여된 권한 없음
                         </span>
                       )}
+                      {staffClubs.map((m) => (
+                        <span className="badge badge-green" key={`staff-${m.club.id}`} style={{ marginRight: 4, marginBottom: 3, display: "inline-block" }}>
+                          운영진 · {m.club.name}
+                        </span>
+                      ))}
                       {uniqueCodes.map((code) => (
                         <span className="badge badge-amber" key={code} style={{ marginRight: 4, marginBottom: 3, display: "inline-block" }}>
                           {permNameMap[code] || code}
