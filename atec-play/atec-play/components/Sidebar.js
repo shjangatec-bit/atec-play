@@ -14,6 +14,7 @@ const LINKS = [
 const ADMIN_LINKS = [
   { href: "/admin/accounts", label: "계정 승인" },
   { href: "/admin/permissions", label: "권한 설정" },
+  { href: "/admin/role-audit", label: "직책·권한 점검" },
   { href: "/admin/club-requests", label: "동호회 개설 승인" },
   { href: "/admin/support-rates", label: "지원금 설정" },
   { href: "/admin/stats", label: "전체 통계" },

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 
+import { ok } from "@/lib/db";
 export default async function OrgPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -14,18 +15,18 @@ export default async function OrgPage({ searchParams }) {
   const viewCompanyOnly = hasPermission(permissions, "ORG_VIEW_COMPANY", { companyId: profile.company_id });
 
   // 회장/총무/일반 회원 모두: 본인이 가입(승인)된 동호회 목록
-  const { data: memberRows } = await supabase
+  const { data: memberRows } = ok(await supabase
     .from("club_members")
     .select("club_id, role_label, club:club_id(id, name)")
     .eq("user_id", authUser.id)
-    .eq("status", "approved");
+    .eq("status", "approved"), "내 동호회");
   const myClubs = (memberRows || []).map((m) => m.club);
   const myClubIds = myClubs.map((c) => c.id);
   const viewMyClubsOnly = !viewAll && !viewCompanyOnly;
 
-  const { data: companies } = await supabase.from("companies").select("id, name").order("name");
-  const { data: allClubs } = await supabase.from("clubs").select("id, name").order("name");
-  const { data: permMaster } = await supabase.from("permissions").select("code, name");
+  const { data: companies } = ok(await supabase.from("companies").select("id, name").order("name"), "회사 목록");
+  const { data: allClubs } = ok(await supabase.from("clubs").select("id, name").order("name"), "동호회 목록");
+  const { data: permMaster } = ok(await supabase.from("permissions").select("code, name"), "권한 목록");
   const permNameMap = Object.fromEntries((permMaster || []).map((p) => [p.code, p.name]));
 
   // 회장/총무/일반 회원 모드에서는 동호회 필터 선택지를 본인이 가입한 동호회로 제한
@@ -34,7 +35,7 @@ export default async function OrgPage({ searchParams }) {
   let query = supabase
     .from("users")
     .select(
-      "id, name, status, company:company_id(id, name), club_members!user_id(status, role_label, club:club_id(id, name)), user_permissions!user_id(permission_code, club_id, company_id)"
+      "id, name, status, company:company_id(id, name), club_members!user_id(status, role_label, is_staff, club:club_id(id, name)), user_permissions!user_id(permission_code, club_id, company_id)"
     )
     .eq("status", "approved")
     .order("name");
@@ -42,7 +43,7 @@ export default async function OrgPage({ searchParams }) {
   const companyFilter = viewAll ? searchParams?.company : viewCompanyOnly ? profile.company_id : null;
   if (companyFilter) query = query.eq("company_id", companyFilter);
 
-  const { data: users } = await query;
+  const { data: users } = ok(await query, "동호회원 명단");
 
   let clubFilter = searchParams?.club || "";
   if (viewMyClubsOnly && clubFilter && !myClubIds.includes(clubFilter)) clubFilter = ""; // 본인 가입 동호회 외 접근 차단
@@ -135,7 +136,9 @@ export default async function OrgPage({ searchParams }) {
               {filteredUsers.map((u) => {
                 const approvedClubs = (u.club_members || []).filter((m) => m.status === "approved");
                 const perms = u.user_permissions || [];
-                const uniqueCodes = [...new Set(perms.map((p) => p.permission_code))];
+                // 전사·회사 단위 권한만 나열합니다. 동호회 권한은 직책(운영진/일반)에서 자동으로 정해집니다.
+                const uniqueCodes = [...new Set(perms.filter((p) => p.club_id === null).map((p) => p.permission_code))];
+                const staffClubs = approvedClubs.filter((m) => m.is_staff);
                 return (
                   <tr key={u.id}>
                     <td style={{ whiteSpace: "nowrap" }}>{u.name}</td>
@@ -157,11 +160,16 @@ export default async function OrgPage({ searchParams }) {
                       ))}
                     </td>
                     <td>
-                      {uniqueCodes.length === 0 && (
+                      {uniqueCodes.length === 0 && staffClubs.length === 0 && (
                         <span className="empty-note" style={{ padding: 0, display: "inline" }}>
                           부여된 권한 없음
                         </span>
                       )}
+                      {staffClubs.map((m) => (
+                        <span className="badge badge-green" key={`staff-${m.club.id}`} style={{ marginRight: 4, marginBottom: 3, display: "inline-block" }}>
+                          운영진 · {m.club.name}
+                        </span>
+                      ))}
                       {uniqueCodes.map((code) => (
                         <span className="badge badge-amber" key={code} style={{ marginRight: 4, marginBottom: 3, display: "inline-block" }}>
                           {permNameMap[code] || code}

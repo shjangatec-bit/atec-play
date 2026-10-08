@@ -5,10 +5,9 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import DisburseButton from "./DisburseButton";
 
-const PER_PERSON_CAP = 30000;
-const MONTHLY_CLUB_CAP = 500000;
-const EXPENSE_RATIO = 0.5;
+import { ok } from "@/lib/db";
 
+import { calcSubsidy, shareOfCompany } from "@/lib/subsidy";
 export default async function BudgetPaymentsPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -27,14 +26,14 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const nextMonthDate = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
 
   const supabase = createClient();
-  const { data: reportPosts } = await supabase
+  const { data: reportPosts } = ok(await supabase
     .from("posts")
     .select(
       "id, title, activity_date, expense_amount, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id)), post_attachments(file_url, file_type)"
     )
     .eq("type", "report")
     .gte("activity_date", monthStart)
-    .lt("activity_date", nextMonth);
+    .lt("activity_date", nextMonth), "활동보고서");
 
   const byClub = {};
   (reportPosts || []).forEach((p) => {
@@ -69,13 +68,13 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const clubIds = Object.keys(byClub).filter((id) => byClub[id].myAttendees.size > 0);
 
   const { data: existing } = clubIds.length
-    ? await supabase
+    ? ok(await supabase
         .from("club_budget_disbursements")
         .select("id, club_id, status, paid_by, paid_at, users:paid_by(name)")
         .eq("company_id", companyId)
         .eq("year", year)
         .eq("month", month)
-        .in("club_id", clubIds)
+        .in("club_id", clubIds), "지원금 지급 내역")
     : { data: [] };
   const existingMap = Object.fromEntries((existing || []).map((e) => [e.club_id, e]));
 
@@ -84,10 +83,8 @@ export default async function BudgetPaymentsPage({ searchParams }) {
     const totalCount = c.allAttendees.size;
     const myCount = c.myAttendees.size;
 
-    const byExpense = Math.floor(c.expense * EXPENSE_RATIO);
-    const byHead = totalCount * PER_PERSON_CAP;
-    const clubTotal = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
-    const myAmount = totalCount > 0 ? Math.floor((clubTotal * myCount) / totalCount) : 0;
+    const { byExpense, byHead, amount: clubTotal } = calcSubsidy(c.expense, totalCount);
+    const myAmount = shareOfCompany(clubTotal, myCount, totalCount);
 
     return {
       clubId,

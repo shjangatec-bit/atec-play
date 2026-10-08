@@ -9,10 +9,8 @@ import CloseRequestButton from "./CloseRequestButton";
 import WithdrawButton from "./WithdrawButton";
 import ClubDetailTabs from "./ClubDetailTabs";
 
-export const PER_PERSON_CAP = 30000;
-export const MONTHLY_CLUB_CAP = 500000;
-export const EXPENSE_RATIO = 0.5;
-
+import { ok } from "@/lib/db";
+import { calcSubsidy, allocateByCompany } from "@/lib/subsidy";
 export default async function ClubDetailPage({ params }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -26,7 +24,7 @@ export default async function ClubDetailPage({ params }) {
   const { data: club } = await supabase.from("clubs").select("*").eq("id", clubId).single();
   if (!club) redirect("/clubs");
 
-  const { data: boardPosts } = await supabase
+  const { data: boardPosts } = ok(await supabase
     .from("posts")
     .select(
       "id, type, title, content, created_at, author_id, author:author_id(name), post_attachments(id, file_url, file_type), post_comments(id, content, created_at, author:author_id(name)), post_likes(user_id)"
@@ -34,7 +32,7 @@ export default async function ClubDetailPage({ params }) {
     .eq("club_id", clubId)
     .in("type", ["notice", "general", "photo"])
     .order("created_at", { ascending: false })
-    .order("created_at", { foreignTable: "post_comments", ascending: true });
+    .order("created_at", { foreignTable: "post_comments", ascending: true }), "게시글");
 
   // 회원현황/활동보고서/지원금 — 게스트에게는 아예 조회하지 않음 (열람 자체를 막기 위함)
   let members = [];
@@ -42,71 +40,76 @@ export default async function ClubDetailPage({ params }) {
   let clubMembersForCheck = [];
 
   if (!isGuest) {
-    const { data: m } = await supabase
+    const { data: m } = ok(await supabase
       .from("club_members")
-      .select("id, role_label, status, applied_at, withdrawal_requested, user:user_id(id, name, company:company_id(name))")
+      .select("id, role_label, is_staff, status, applied_at, withdrawal_requested, user:user_id(id, name, company:company_id(name))")
       .eq("club_id", clubId)
-      .order("applied_at");
+      .order("applied_at"), "회원 현황");
     members = m || [];
 
-    const { data: r } = await supabase
+    const { data: r } = ok(await supabase
       .from("posts")
       .select(
         "id, title, activity_date, expense_amount, created_at, author:author_id(name), post_attendees(user_id, user:user_id(name, company:company_id(name))), post_attachments(file_url, file_type)"
       )
       .eq("club_id", clubId)
       .eq("type", "report")
-      .order("activity_date", { ascending: false });
+      .order("activity_date", { ascending: false }), "활동보고서");
     reportPosts = r || [];
 
     // 참석자 체크 목록 — 현재 회원 + 탈회한 이력이 있는 사람까지 포함합니다.
     // (지난달 활동에 참석했는데 이번 달에 탈회·퇴사한 경우에도 보고서에 체크할 수 있어야 하기 때문)
-    const { data: cm } = await supabase
+    const { data: cm } = ok(await supabase
       .from("club_members")
       .select("user_id, status, user:user_id(name, company:company_id(name))")
       .eq("club_id", clubId)
-      .in("status", ["approved", "withdrawn"]);
+      .in("status", ["approved", "withdrawn"]), "참석자 목록");
     clubMembersForCheck = (cm || []).sort((a, b) => {
       if (a.status !== b.status) return a.status === "approved" ? -1 : 1;
       return (a.user?.name || "").localeCompare(b.user?.name || "");
     });
   }
 
-  const canApprove = !isGuest && hasPermission(permissions, "CLUB_MEMBER_APPROVE", { clubId });
-  const canWriteReport = !isGuest && hasPermission(permissions, "CLUB_REPORT_WRITE", { clubId });
-  const canWritePost = !isGuest && hasPermission(permissions, "CLUB_POST_WRITE", { clubId });
-
-  // 이 동호회의 승인된 회원인지 (탈회 신청 버튼 노출에 사용)
-    const myMembership = members.find((m) => m.status === "approved" && m.user?.id === authUser.id);
+  // 권한은 "운영진 / 일반" 두 가지뿐입니다.
+  //  · 운영진(isStaff): 직책이 회장·총무인 승인 회원. DB(club_members.is_staff)가 직책에서 자동 계산합니다.
+  //  · 일반: 승인된 모든 회원 (열람, 게시글 작성)
+  const myMembership = members.find((m) => m.status === "approved" && m.user?.id === authUser.id);
   const isMemberOfThisClub = !isGuest && !!myMembership;
-    // 폐설 신청은 회장·총무만 가능합니다. 회원이 모두 빠진 동호회도 정리할 수 있도록
+  const isStaff = isMemberOfThisClub && !!myMembership.is_staff;
+  const canWritePost = isMemberOfThisClub;
+  const canWriteReport = isStaff;
+
+  // 직책 변경(총무↔회원)·회장 교체는 그 동호회 회장 또는 통합관리자만 할 수 있습니다.
+  // (직책에 따라 달라지는 유일한 기능이며, 서버(DB)에서도 같은 규칙으로 막고 있습니다.)
+  const isChair = isMemberOfThisClub && myMembership.role_label === "회장";
+  const isRoleAdmin = hasPermission(permissions, "PERM_MANAGE") || hasPermission(permissions, "ACC_MANAGE");
+  const canManageRoles = !isGuest && (isChair || isRoleAdmin);
+
+  // 폐설 신청은 운영진(회장·총무)만 가능합니다. 회원이 모두 빠진 동호회도 정리할 수 있도록
   // 폐설 승인 권한자(통합관리자)는 회원이 아니어도 신청할 수 있습니다.
-  const canRequestClose = !isGuest && (
-    (isMemberOfThisClub && canApprove) || hasPermission(permissions, "CLUB_CLOSE_APPROVE")
-  );
+  const canRequestClose = !isGuest && (isStaff || hasPermission(permissions, "CLUB_CLOSE_APPROVE"));
   let alreadyRequestedClose = false;
   if (canRequestClose && club.status === "active") {
-    const { data: existingCloseReq } = await supabase
+    const { data: existingCloseReq } = ok(await supabase
       .from("club_lifecycle_requests")
       .select("id")
       .eq("club_id", clubId)
       .eq("type", "close")
       .eq("status", "pending")
-      .maybeSingle();
+      .maybeSingle(), "폐설 신청 내역");
     alreadyRequestedClose = !!existingCloseReq;
   }
 
-  // 회원 권한 관리 탭용 데이터 (회장/총무만)
-  let memberPermissions = {};
-  if (canApprove) {
-    const { data: cp } = await supabase
-      .from("user_permissions")
-      .select("user_id, permission_code")
-      .eq("club_id", clubId);
-    (cp || []).forEach((row) => {
-      if (!memberPermissions[row.user_id]) memberPermissions[row.user_id] = [];
-      memberPermissions[row.user_id].push(row.permission_code);
-    });
+  // 회장 교체 이력 (이 동호회 승인 회원과 통합관리자에게만 보임)
+  let chairHistory = [];
+  if (!isGuest) {
+    const { data: hist } = ok(await supabase
+      .from("club_chair_history")
+      .select("id, changed_at, old_chair_new_role, note, old_chair:old_chair_user_id(name), new_chair:new_chair_user_id(name), changer:changed_by(name)")
+      .eq("club_id", clubId)
+      .order("changed_at", { ascending: false })
+      .limit(20), "회장 교체 이력");
+    chairHistory = hist || [];
   }
 
   // 월별 자동 집계
@@ -146,23 +149,16 @@ export default async function ClubDetailPage({ params }) {
   const monthly = Object.fromEntries(
     Object.entries(monthlyRaw).map(([ym, v]) => {
       const attendeeCount = v.attendees.size;
-      const byExpense = Math.floor(v.expense * EXPENSE_RATIO);
-      const byHead = attendeeCount * PER_PERSON_CAP;
-      const amount = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
+      const { byExpense, byHead, amount } = calcSubsidy(v.expense, attendeeCount);
 
       // 회사별 실인원(중복 제외)과 그 비율에 따른 지원금 배분
-      const companyRows = Object.entries(v.companyCount)
-        .map(([co, set]) => ({ company: co, count: set.size }))
-        .sort((a, b) => b.count - a.count);
-      let assigned = 0;
-      companyRows.forEach((r, i) => {
-        if (i === companyRows.length - 1) {
-          r.amount = amount - assigned; // 끝자리 오차는 마지막 회사에 몰아 합계를 맞춤
-        } else {
-          r.amount = attendeeCount > 0 ? Math.floor((amount * r.count) / attendeeCount) : 0;
-          assigned += r.amount;
-        }
-      });
+      const companyRows = allocateByCompany(
+        amount,
+        Object.entries(v.companyCount)
+          .map(([co, set]) => ({ company: co, count: set.size }))
+          .sort((a, b) => b.count - a.count),
+        attendeeCount
+      );
 
       const grossHeadcount = v.reports.reduce((s, r) => s + r.headcount, 0);
 
@@ -220,13 +216,16 @@ export default async function ClubDetailPage({ params }) {
               {club.description} · {club.status === "active" ? "운영중" : "폐설"}
             </div>
           </div>
-          {canApprove && <DescriptionEditor clubId={club.id} current={club.description} />}
-          {canApprove && <CoverImageUploader clubId={club.id} />}
+          {isStaff && <DescriptionEditor clubId={club.id} current={club.description} />}
+          {isStaff && <CoverImageUploader clubId={club.id} />}
                     {canRequestClose && club.status === "active" && (
             <CloseRequestButton clubId={club.id} userId={authUser.id} alreadyRequested={alreadyRequestedClose} />
           )}
-          {isMemberOfThisClub && (
+          {isMemberOfThisClub && !isChair && (
             <WithdrawButton memberId={myMembership.id} alreadyRequested={myMembership.withdrawal_requested} />
+          )}
+          {isChair && (
+            <span className="co-tag" title="회장은 회장 교체 후에 탈회할 수 있습니다.">회장은 회장 교체 후 탈회할 수 있습니다</span>
           )}
         </div>
 
@@ -238,11 +237,12 @@ export default async function ClubDetailPage({ params }) {
           monthly={monthly}
           clubMembersForCheck={clubMembersForCheck}
           currentUserId={authUser.id}
-          canApprove={canApprove}
+          isStaff={isStaff}
           canWriteReport={canWriteReport}
           canWritePost={canWritePost}
+          canManageRoles={canManageRoles}
+          chairHistory={chairHistory}
           isGuest={isGuest}
-          memberPermissions={memberPermissions}
         />
       </div>
     </div>

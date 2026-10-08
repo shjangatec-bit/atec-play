@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import JoinButton from "@/components/JoinButton";
 import ReactivateButton from "./ReactivateButton";
 
+import { ok } from "@/lib/db";
 export default async function ClubsPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -14,15 +15,15 @@ export default async function ClubsPage({ searchParams }) {
   const canCreateClub = hasPermission(permissions, "CLUB_CREATE_REQUEST");
 
   const supabase = createClient();
-  const { data: clubs } = await supabase
+  const { data: clubs } = ok(await supabase
     .from("clubs")
     .select("id, name, description, status, cover_image_url, club_members(status)")
-    .order("name");
+    .order("name"), "동호회 목록");
 
-  const { data: myMemberships } = await supabase
+  const { data: myMemberships } = ok(await supabase
     .from("club_members")
     .select("club_id, status")
-    .eq("user_id", authUser.id);
+    .eq("user_id", authUser.id), "내 가입 현황");
   const myStatusByClub = Object.fromEntries((myMemberships || []).map((m) => [m.club_id, m.status]));
 
   let visible = clubs || [];

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 
+import { ok } from "@/lib/db";
 export default async function StatsPage() {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -10,18 +11,18 @@ export default async function StatsPage() {
   if (!hasPermission(permissions, "ORG_VIEW_ALL")) redirect("/dashboard");
 
   const supabase = createClient();
-  const { data: companies } = await supabase.from("companies").select("id, name");
-  const { data: users } = await supabase.from("users").select("id, company_id").eq("status", "approved");
-  const { count: activeClubs } = await supabase.from("clubs").select("*", { count: "exact", head: true }).eq("status", "active");
-  const { data: memberRows } = await supabase.from("club_members").select("user_id").eq("status", "approved");
+  const { data: companies } = ok(await supabase.from("companies").select("id, name"), "회사 목록");
+  const { data: users } = ok(await supabase.from("users").select("id, company_id").eq("status", "approved"), "회원 목록");
+  const { count: activeClubs } = ok(await supabase.from("clubs").select("*", { count: "exact", head: true }).eq("status", "active"), "운영 동호회 수");
+  const { data: memberRows } = ok(await supabase.from("club_members").select("user_id").eq("status", "approved"), "가입 현황");
   const uniqueMembers = new Set((memberRows || []).map((m) => m.user_id)).size;
 
   const now = new Date();
-  const { data: disbursements } = await supabase
+  const { data: disbursements } = ok(await supabase
     .from("club_budget_disbursements")
     .select("amount")
     .eq("year", now.getFullYear())
-    .eq("month", now.getMonth() + 1);
+    .eq("month", now.getMonth() + 1), "지원금 지급 내역");
   const monthlyTotal = (disbursements || []).reduce((sum, d) => sum + Number(d.amount), 0);
 
   const totalUsers = (users || []).length || 1;

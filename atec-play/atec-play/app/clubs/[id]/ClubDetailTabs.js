@@ -3,11 +3,10 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import MonthlyReportPrint from "./MonthlyReportPrint";
+import { RoleSelect, ChairChangePanel, ChairHistory } from "./RoleControls";
 
+import { MONTHLY_CLUB_CAP, calcSubsidy } from "@/lib/subsidy";
 const SIGNED_URL_TTL = 31536000;
-const PER_PERSON_CAP = 30000;
-const MONTHLY_CLUB_CAP = 500000;
-const EXPENSE_RATIO = 0.5;
 
 const TABS = [
   { key: "members", label: "회원 현황" },
@@ -15,16 +14,6 @@ const TABS = [
   { key: "gallery", label: "사진 갤러리" },
   { key: "report", label: "활동보고서" },
   { key: "budget", label: "지원금 현황" },
-  { key: "permissions", label: "회원 권한" },
-];
-
-const CLUB_PERM_LABELS = [
-  { code: "CLUB_MEMBER_APPROVE", label: "가입/탈회 승인" },
-  { code: "CLUB_VIEW", label: "동호회 정보 조회" },
-  { code: "CLUB_POST_WRITE", label: "게시글 작성" },
-  { code: "CLUB_REPORT_WRITE", label: "활동보고서/증빙 업로드" },
-  { code: "CLUB_REPORT_VIEW", label: "증빙 열람" },
-  { code: "CLUB_BUDGET_VIEW", label: "지원금 현황 조회" },
 ];
 
 function storagePathFromUrl(url) {
@@ -53,29 +42,19 @@ export default function ClubDetailTabs({
   monthly,
   clubMembersForCheck,
   currentUserId,
-  canApprove,
+  isStaff,
   canWriteReport,
   canWritePost,
+  canManageRoles,
+  chairHistory = [],
   isGuest,
-  memberPermissions = {},
 }) {
   const [tab, setTab] = useState("board");
   const router = useRouter();
   const supabase = createClient();
   const visibleTabs = isGuest
     ? TABS.filter((t) => t.key === "board" || t.key === "gallery")
-    : TABS.filter((t) => t.key !== "permissions" || canApprove);
-
-  async function toggleMemberPermission(userId, code, isOn) {
-    const { error } = isOn
-      ? await supabase.from("user_permissions").delete().eq("user_id", userId).eq("club_id", club.id).eq("permission_code", code)
-      : await supabase.from("user_permissions").insert({ user_id: userId, club_id: club.id, permission_code: code, granted_by: currentUserId });
-    if (error) {
-      alert("권한 변경 실패: " + error.message);
-      return;
-    }
-    router.refresh();
-  }
+    : TABS;
 
   async function processMember(memberId, status) {
     const { error } = await supabase.from("club_members").update({ status, processed_by: currentUserId, processed_at: new Date().toISOString() }).eq("id", memberId);
@@ -84,32 +63,12 @@ export default function ClubDetailTabs({
       return;
     }
 
-    if (status === "approved") {
-      const member = members.find((m) => m.id === memberId);
-      if (member?.user?.id) {
-        const defaultCodes = ["CLUB_VIEW", "CLUB_POST_WRITE", "CLUB_BUDGET_VIEW"];
-        const rows = defaultCodes.map((code) => ({
-          user_id: member.user.id,
-          club_id: club.id,
-          permission_code: code,
-          granted_by: currentUserId,
-        }));
-        const { error: permErr } = await supabase.from("user_permissions").upsert(rows, { onConflict: "user_id,club_id,permission_code", ignoreDuplicates: true });
-        if (permErr) {
-          alert(
-            "가입 승인은 됐지만 기본 권한 부여에 실패했습니다: " +
-              permErr.message +
-              "\n권한 설정 화면에서 회원 템플릿을 다시 적용해 주세요."
-          );
-        }
-      }
-    }
+    // 승인되면 일반 권한이 DB 에서 자동으로 부여됩니다. (직책에서 권한이 자동 계산됨)
     router.refresh();
   }
 
   async function processWithdrawal(memberId, approve) {
     if (approve) {
-      const member = members.find((m) => m.id === memberId);
       const { error } = await supabase
         .from("club_members")
         .update({ status: "withdrawn", withdrawal_requested: false, processed_by: currentUserId, processed_at: new Date().toISOString() })
@@ -118,16 +77,7 @@ export default function ClubDetailTabs({
         alert("처리 실패: " + error.message);
         return;
       }
-      if (member?.user?.id) {
-        const { error: permErr } = await supabase.from("user_permissions").delete().eq("user_id", member.user.id).eq("club_id", club.id);
-        if (permErr) {
-          alert(
-            "탈회 처리는 됐지만 이 동호회 관련 권한 회수에 실패했습니다: " +
-              permErr.message +
-              "\n권한 설정 화면에서 수동으로 정리해 주세요."
-          );
-        }
-      }
+      // 탈회 처리되면 이 동호회의 권한이 DB 에서 자동으로 회수됩니다.
     } else {
       const { error } = await supabase.from("club_members").update({ withdrawal_requested: false }).eq("id", memberId);
       if (error) {
@@ -155,6 +105,7 @@ export default function ClubDetailTabs({
       </div>
 
       {tab === "members" && !isGuest && (
+        <>
         <div className="grid-3" style={{ gridTemplateColumns: "1.3fr 1fr 1fr" }}>
           <div className="card">
             <div className="section-title">회원 현황 ({approvedMembers.length}명)</div>
@@ -164,12 +115,17 @@ export default function ClubDetailTabs({
                   <tr key={m.id}>
                     <td>{m.user?.name} <span className="co-tag">{m.user?.company?.name}</span></td>
                     <td style={{ textAlign: "right" }}>
-                      <span className={`badge ${m.role_label === "회장" ? "badge-brand" : m.role_label === "총무" ? "badge-gray" : ""}`}>{m.role_label}</span>
+                      {canManageRoles && m.role_label !== "회장" ? (
+                        <RoleSelect member={m} />
+                      ) : (
+                        <span className={`badge ${m.role_label === "회장" ? "badge-brand" : m.role_label === "총무" ? "badge-gray" : ""}`}>{m.role_label}</span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {canManageRoles && <ChairChangePanel clubId={club.id} members={members} />}
           </div>
           <div className="card">
             <div className="section-title">가입 대기</div>
@@ -180,7 +136,7 @@ export default function ClubDetailTabs({
                   <tr key={m.id}>
                     <td>{m.user?.name} <span className="co-tag">{m.user?.company?.name}</span></td>
                     <td className="row-flex" style={{ justifyContent: "flex-end" }}>
-                      {canApprove ? (
+                      {isStaff ? (
                         <>
                           <button className="btn-sm btn-approve" onClick={() => processMember(m.id, "approved")}>승인</button>
                           <button className="btn-sm btn-reject" onClick={() => processMember(m.id, "rejected")}>반려</button>
@@ -203,7 +159,7 @@ export default function ClubDetailTabs({
                   <tr key={m.id}>
                     <td>{m.user?.name} <span className="co-tag">{m.user?.company?.name}</span></td>
                     <td className="row-flex" style={{ justifyContent: "flex-end" }}>
-                      {canApprove ? (
+                      {isStaff ? (
                         <>
                           <button className="btn-sm btn-approve" onClick={() => processWithdrawal(m.id, true)}>승인</button>
                           <button className="btn-sm btn-reject" onClick={() => processWithdrawal(m.id, false)}>반려</button>
@@ -218,10 +174,12 @@ export default function ClubDetailTabs({
             </table>
           </div>
         </div>
+        <ChairHistory history={chairHistory} />
+        </>
       )}
 
-      {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} canApprove={canApprove} type="notice" isGuest={isGuest} />}
-      {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} canApprove={canApprove} type="photo" isGallery isGuest={isGuest} />}
+      {tab === "board" && <BoardTab posts={notices} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} isStaff={isStaff} type="notice" isGuest={isGuest} />}
+      {tab === "gallery" && <BoardTab posts={gallery} clubId={club.id} currentUserId={currentUserId} canWrite={canWritePost} isStaff={isStaff} type="photo" isGallery isGuest={isGuest} />}
 
       {tab === "report" && !isGuest && (
         <ReportTab
@@ -229,7 +187,7 @@ export default function ClubDetailTabs({
           clubId={club.id}
           currentUserId={currentUserId}
           canWrite={canWriteReport}
-          canApprove={canApprove}
+          isStaff={isStaff}
           clubMembers={clubMembersForCheck}
         />
       )}
@@ -282,55 +240,11 @@ export default function ClubDetailTabs({
         </div>
       )}
 
-      {tab === "permissions" && canApprove && (
-        <div className="card">
-          <div className="empty-note" style={{ padding: "0 0 10px" }}>
-            이 동호회 회원의 개별 권한만 조정할 수 있습니다. (전사 권한이나 다른 동호회 권한은 여기서 바꿀 수 없습니다)
-          </div>
-          <table className="toggle-table">
-            <thead>
-              <tr>
-                <th>회원</th>
-                {CLUB_PERM_LABELS.map((p) => (
-                  <th key={p.code} style={{ textAlign: "center", fontSize: 11 }}>{p.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {members.filter((m) => m.status === "approved" && m.user).map((m) => {
-                const myPerms = memberPermissions[m.user?.id] || [];
-                return (
-                  <tr key={m.id}>
-                    <td>
-                      {m.user?.name} <span className="co-tag">{m.user?.company?.name}</span>
-                    </td>
-                    {CLUB_PERM_LABELS.map((p) => {
-                      const on = myPerms.includes(p.code);
-                      return (
-                        <td key={p.code} style={{ textAlign: "center" }}>
-                          <span
-                            className={`switch${on ? " on" : ""}`}
-                            style={{ cursor: "pointer" }}
-                            onClick={() => toggleMemberPermission(m.user?.id, p.code, on)}
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-              {members.filter((m) => m.status === "approved" && m.user).length === 0 && (
-                <tr><td colSpan={CLUB_PERM_LABELS.length + 1}><div className="empty-note">승인된 회원이 없습니다.</div></td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
 
-function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, isGallery, isGuest }) {
+function BoardTab({ posts, clubId, currentUserId, canWrite, isStaff, type, isGallery, isGuest }) {
   const router = useRouter();
   const supabase = createClient();
   const [title, setTitle] = useState("");
@@ -349,7 +263,7 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
   }
 
   function canDeletePost(post) {
-    return post.author_id === currentUserId || canApprove;
+    return post.author_id === currentUserId || isStaff;
   }
 
   async function deletePost(post) {
@@ -608,7 +522,7 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, canApprove, type, is
   );
 }
 
-function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMembers }) {
+function ReportTab({ posts, clubId, currentUserId, canWrite, isStaff, clubMembers }) {
   const router = useRouter();
   const supabase = createClient();
   const [title, setTitle] = useState("");
@@ -622,9 +536,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
 
   const checkedCount = Object.values(checked).filter(Boolean).length;
   const expenseNum = Number(expense) || 0;
-  const byExpense = Math.floor(expenseNum * EXPENSE_RATIO);
-  const byHead = checkedCount * PER_PERSON_CAP;
-  const estimate = Math.min(byExpense, byHead, MONTHLY_CLUB_CAP);
+  const { byExpense, byHead, amount: estimate } = calcSubsidy(expenseNum, checkedCount);
 
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -730,7 +642,7 @@ function ReportTab({ posts, clubId, currentUserId, canWrite, canApprove, clubMem
                     {a.file_type === "receipt" ? "증빙 열기" : "첨부파일 열기"}
                   </a>
                 ))}
-                {(canWrite || canApprove) && (
+                {(canWrite || isStaff) && (
                   <button
                     className="btn-sm btn-outline"
                     style={{ marginLeft: "auto" }}

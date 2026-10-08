@@ -4,6 +4,7 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import RequestRow from "./RequestRow";
 
+import { ok } from "@/lib/db";
 export default async function ClubRequestsPage() {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -11,10 +12,10 @@ export default async function ClubRequestsPage() {
   if (!hasPermission(permissions, "CLUB_CREATE_APPROVE") && !hasPermission(permissions, "CLUB_CLOSE_APPROVE")) redirect("/dashboard");
 
   const supabase = createClient();
-  const { data: requests } = await supabase
+  const { data: requests } = ok(await supabase
     .from("club_lifecycle_requests")
     .select("id, type, proposed_name, proposed_description, club_id, requester_id, file_url, status, created_at, requester:requester_id(name), club:club_id(name)")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false }), "개설·폐설 신청");
 
   return (
     <div className="app-shell">

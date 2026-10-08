@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
@@ -6,7 +7,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 function randomPassword(len = 10) {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   let out = "";
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  // Math.random() 은 예측이 가능하므로, 암호학적으로 안전한 난수(crypto.randomInt)를 사용합니다.
+  for (let i = 0; i < len; i++) out += chars[randomInt(chars.length)];
   return out;
 }
 
