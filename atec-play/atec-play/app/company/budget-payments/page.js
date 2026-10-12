@@ -4,10 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import DisburseButton from "./DisburseButton";
+import ExportButton from "./ExportButton";
 
 import { ok } from "@/lib/db";
 
-import { calcSubsidy, shareOfCompany } from "@/lib/subsidy";
+import { groupReportsByClub, clubIdsWithMyAttendees, buildRows, buildExportSheets, exportFileName } from "@/lib/payments";
 export default async function BudgetPaymentsPage({ searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
@@ -29,48 +30,19 @@ export default async function BudgetPaymentsPage({ searchParams }) {
   const { data: reportPosts } = ok(await supabase
     .from("posts")
     .select(
-      "id, title, activity_date, expense_amount, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id)), post_attachments(file_url, file_type)"
+      "id, title, activity_date, expense_amount, club_id, club:club_id(name), post_attendees(user_id, user:user_id(name, company_id, company:company_id(name))), post_attachments(file_url, file_type)"
     )
     .eq("type", "report")
     .gte("activity_date", monthStart)
     .lt("activity_date", nextMonth), "활동보고서");
 
-  const byClub = {};
-  (reportPosts || []).forEach((p) => {
-    if (!byClub[p.club_id]) {
-      byClub[p.club_id] = {
-        clubName: p.club?.name,
-        allAttendees: new Set(),
-        myAttendees: new Map(),
-        expense: 0,
-        reports: [],
-      };
-    }
-    const c = byClub[p.club_id];
-    c.expense += Number(p.expense_amount) || 0;
-    (p.post_attendees || []).forEach((a) => {
-      c.allAttendees.add(a.user_id);
-      if (a.user?.company_id === companyId) c.myAttendees.set(a.user_id, a.user.name);
-    });
-    const myNames = (p.post_attendees || [])
-      .filter((a) => a.user?.company_id === companyId)
-      .map((a) => a.user.name);
-    c.reports.push({
-      postId: p.id,
-      title: p.title,
-      activityDate: p.activity_date,
-      expense: Number(p.expense_amount) || 0,
-      attendeeNames: myNames,
-      attachments: p.post_attachments || [],
-    });
-  });
-
-  const clubIds = Object.keys(byClub).filter((id) => byClub[id].myAttendees.size > 0);
+  const byClub = groupReportsByClub(reportPosts, companyId);
+  const clubIds = clubIdsWithMyAttendees(byClub);
 
   const { data: existing } = clubIds.length
     ? ok(await supabase
         .from("club_budget_disbursements")
-        .select("id, club_id, status, paid_by, paid_at, users:paid_by(name)")
+        .select("id, club_id, status, amount, paid_by, paid_at, users:paid_by(name)")
         .eq("company_id", companyId)
         .eq("year", year)
         .eq("month", month)
@@ -78,31 +50,11 @@ export default async function BudgetPaymentsPage({ searchParams }) {
     : { data: [] };
   const existingMap = Object.fromEntries((existing || []).map((e) => [e.club_id, e]));
 
-  const rows = clubIds.map((clubId) => {
-    const c = byClub[clubId];
-    const totalCount = c.allAttendees.size;
-    const myCount = c.myAttendees.size;
-
-    const { byExpense, byHead, amount: clubTotal } = calcSubsidy(c.expense, totalCount);
-    const myAmount = shareOfCompany(clubTotal, myCount, totalCount);
-
-    return {
-      clubId,
-      clubName: c.clubName,
-      expense: c.expense,
-      totalCount,
-      myCount,
-      attendeeNames: [...c.myAttendees.values()],
-      byExpense,
-      byHead,
-      clubTotal,
-      amount: myAmount,
-      disbursement: existingMap[clubId],
-      reports: c.reports,
-    };
-  });
+  const rows = buildRows(byClub, clubIds, existingMap);
 
   const monthlyTotal = rows.reduce((s, r) => s + r.amount, 0);
+  const exportSheets = buildExportSheets(rows, month);
+  const fileName = exportFileName(profile.company?.name, year, month);
   const paidCount = rows.filter((r) => r.disbursement?.status === "paid").length;
 
   return (
@@ -121,12 +73,13 @@ export default async function BudgetPaymentsPage({ searchParams }) {
               <a className="btn-sm btn-outline" href="/company/budget-payments">이번 달로</a>
             )}
             <a className="btn-sm btn-outline" href={`/company/budget-payments?year=${nextMonthDate.y}&month=${nextMonthDate.m}`}>다음 달 ▶</a>
+            <ExportButton fileName={fileName} sheets={exportSheets} disabled={rows.length === 0} />
           </div>
         </div>
         <div className="empty-note" style={{ padding: "0 0 16px", lineHeight: 1.8 }}>
           로그인한 담당자의 소속회사(<b style={{ color: "var(--ink-2)" }}>{profile.company?.name}</b>) 기준으로, {month}월 자사 소속 참석자가 있는 동호회만 자동으로 걸러서 보여줍니다.
           <br />
-          지원금은 동호회 단위로 <b style={{ color: "var(--ink-2)" }}>활동비용의 50% · 참석 1인당 3만원 · 월 50만원</b> 중 가장 작은 금액을 먼저 구한 뒤, 자사 참석인원 비율만큼 배분됩니다.
+          지원금은 동호회 단위로 <b style={{ color: "var(--ink-2)" }}>활동비용의 50% · 참석 1인당 3만원 · 월 50만원</b> 중 가장 작은 금액을 먼저 구한 뒤, 자사 참석인원 비율만큼 배분됩니다. 원 단위 끝자리는 월간 보고서와 같은 방식으로 인원이 가장 적은 회사(같으면 가나다순 마지막 회사)에 반영되어, 모든 회사 몫을 더하면 동호회 지급액과 정확히 같습니다.
         </div>
         <div className="grid-3" style={{ marginBottom: 16 }}>
           <div className="card"><div className="metric-label">{month}월 지급 대상 동호회</div><div className="metric-value">{rows.length}</div></div>
@@ -155,7 +108,14 @@ export default async function BudgetPaymentsPage({ searchParams }) {
                       <span className="co-tag" style={{ marginLeft: 4 }}>{r.myCount}/{r.totalCount}명</span>
                     </td>
                     <td className="mono" style={{ textAlign: "right" }}>{r.clubTotal.toLocaleString()}</td>
-                    <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{r.amount.toLocaleString()}</td>
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>
+                      {r.amount.toLocaleString()}
+                      {r.disbursement?.status === "paid" && r.amount !== r.calcAmount && (
+                        <div className="co-tag" title="지급 당시 저장된 금액과 현재 계산이 다릅니다. 기록은 지급 당시 금액입니다." style={{ fontWeight: 400 }}>
+                          현재 계산 {r.calcAmount.toLocaleString()}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       {r.disbursement?.status === "paid" ? (
                         <span className="badge badge-green">지급완료</span>

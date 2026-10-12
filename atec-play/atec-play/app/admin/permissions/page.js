@@ -15,7 +15,7 @@ export default async function AdminPermissionsPage() {
   const [{ data: users }, { data: allPerms }, { data: master }] = (await Promise.all([
     supabase
       .from("users")
-      .select("id, name, company:company_id(id, name)")
+      .select("id, name, company:company_id(id, name), club_members!user_id(status, role_label, is_staff, club:club_id(id, name))")
       .eq("status", "approved")
       .order("name"),
     supabase.from("user_permissions").select("id, user_id, club_id, company_id, permission_code"),
