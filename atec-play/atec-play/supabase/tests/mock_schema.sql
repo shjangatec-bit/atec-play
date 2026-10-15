@@ -1,4 +1,4 @@
-do $$ begin create role anon nologin; exception when duplicate_object then null; end $$; do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
+do $$ begin create role anon nologin; exception when duplicate_object then null; end $$; do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$; do $$ begin create role service_role nologin; exception when duplicate_object then null; end $$;
 create schema auth;
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
 grant usage on schema auth to anon, authenticated; grant usage on schema public to anon, authenticated;
@@ -9,11 +9,11 @@ create table clubs(id uuid primary key default gen_random_uuid(), name text, des
 create table user_permissions(id uuid primary key default gen_random_uuid(), user_id uuid, permission_code text, club_id uuid, company_id uuid, granted_by uuid);
 create table club_members(id uuid primary key default gen_random_uuid(), club_id uuid, user_id uuid, role_label text, status text, withdrawal_requested boolean default false, processed_by uuid, processed_at timestamptz);
 create table club_lifecycle_requests(id uuid primary key default gen_random_uuid(), type text, club_id uuid, requester_id uuid, status text, proposed_name text);
-create table club_support_rates(id uuid primary key default gen_random_uuid(), club_id uuid, unit_amount int);
+create table club_support_rates(id uuid primary key default gen_random_uuid(), club_id uuid, unit_amount int, updated_by uuid, updated_at timestamptz);
 create table posts(id uuid primary key default gen_random_uuid(), club_id uuid, author_id uuid, type text, title text);
 create table post_attachments(id uuid primary key default gen_random_uuid(), post_id uuid, file_url text);
 create table post_attendees(post_id uuid, user_id uuid);
 create table post_comments(id uuid primary key default gen_random_uuid(), post_id uuid, author_id uuid, content text);
 create table post_likes(post_id uuid, user_id uuid);
-create table club_budget_disbursements(id uuid primary key default gen_random_uuid(), club_id uuid, company_id uuid, status text);
+create table club_budget_disbursements(id uuid primary key default gen_random_uuid(), club_id uuid, company_id uuid, status text, year int, month int, attendee_count int, amount int, paid_by uuid, paid_at timestamptz);
 grant select,insert,update,delete on all tables in schema public to anon, authenticated;

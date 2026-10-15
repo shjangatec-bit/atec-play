@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit-server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
@@ -63,6 +64,10 @@ export async function POST(req) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // 작업 기록 (실패해도 초기화 결과는 그대로 돌려줍니다). 비밀번호 자체는 기록하지 않습니다.
+  const { data: target } = await adminClient.from("users").select("name").eq("id", userId).maybeSingle();
+  await writeAudit(adminClient, { actor: authUser.id, action: "user.password_reset", targetType: "user", targetId: userId, targetLabel: target?.name || null });
 
   return NextResponse.json({ newPassword });
 }
