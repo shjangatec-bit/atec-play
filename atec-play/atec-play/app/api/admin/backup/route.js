@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { writeAudit } from "@/lib/audit-server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
@@ -193,6 +194,14 @@ export async function GET() {
     "- 0건인 표는 빈 파일로 저장됨 (복원할 필요 없음)",
   ].join("\r\n");
   files.unshift({ name: "00_README.txt", data: Buffer.concat([BOM, Buffer.from(readme, "utf8")]) });
+
+  await writeAudit(admin, {
+    actor: authUser.id,
+    action: "backup.download",
+    targetType: "backup",
+    targetLabel: today,
+    detail: { tables: TABLES.length, rows: summary.reduce((n, l) => n + (parseInt(l.match(/(\d+)건$/)?.[1], 10) || 0), 0) },
+  });
 
   const zip = buildZip(files);
   const fileName = `ATECPLAY_backup_${today}.zip`;
