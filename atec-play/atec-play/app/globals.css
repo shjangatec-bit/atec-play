@@ -134,3 +134,6 @@ tr:last-child td{border-bottom:none;}
 .stat-bar span{height:100%; display:block;}
 
 .club-card h3{color:var(--ink);}
+
+/* 검색 결과에서 일치한 글자 강조 */
+mark.hit{background:rgba(255,213,79,0.55); color:inherit; border-radius:2px; padding:0 1px;}

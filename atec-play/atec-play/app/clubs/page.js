@@ -4,6 +4,9 @@ import { getCurrentProfile, hasPermission } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import JoinButton from "@/components/JoinButton";
 import ReactivateButton from "./ReactivateButton";
+import SearchBox from "@/components/SearchBox";
+import Highlight from "@/components/Highlight";
+import { parseTerms, matchesAllTerms } from "@/lib/search";
 
 import { ok } from "@/lib/db";
 export default async function ClubsPage({ searchParams }) {
@@ -30,6 +33,13 @@ export default async function ClubsPage({ searchParams }) {
   if (searchParams?.mine) {
     visible = visible.filter((c) => myStatusByClub[c.id] === "approved");
   }
+  // 이름·소개 검색 (띄어쓰기로 나눈 단어가 모두 들어간 동호회만)
+  const rawQ = Array.isArray(searchParams?.q) ? searchParams.q[0] : searchParams?.q;
+  const query = typeof rawQ === "string" ? rawQ.slice(0, 200) : "";
+  const terms = parseTerms(query);
+  if (terms.length > 0) {
+    visible = visible.filter((c) => matchesAllTerms([c.name, c.description], terms));
+  }
 
   return (
     <div className="app-shell">
@@ -46,6 +56,19 @@ export default async function ClubsPage({ searchParams }) {
             </div>
           )}
         </div>
+        <SearchBox
+          action="/clubs"
+          value={query}
+          placeholder="동호회 이름·소개 검색"
+          hidden={searchParams?.mine ? { mine: "1" } : {}}
+          clearHref={searchParams?.mine ? "/clubs?mine=1" : "/clubs"}
+        />
+        {terms.length > 0 && (
+          <div className="empty-note" style={{ padding: "0 0 12px" }}>
+            “{terms.join(" ")}” 검색 결과 {visible.length}개 · 게시글까지 찾으려면 <a href={`/search?q=${encodeURIComponent(terms.join(" "))}`}>통합 검색</a>을 이용하세요.
+          </div>
+        )}
+        {terms.length > 0 && visible.length === 0 && <div className="card"><div className="empty-note">일치하는 동호회가 없습니다.</div></div>}
         <div className="grid-3">
           {visible.map((club) => {
             const memberCount = (club.club_members || []).filter((m) => m.status === "approved").length;
@@ -64,8 +87,8 @@ export default async function ClubsPage({ searchParams }) {
                     }
                   />
                   <div className="body" style={{ paddingBottom: 4 }}>
-                    <h3 style={club.status === "closed" ? { color: "var(--ink-3)" } : {}}>{club.name}</h3>
-                    <div className="desc">{club.description}</div>
+                    <h3 style={club.status === "closed" ? { color: "var(--ink-3)" } : {}}><Highlight text={club.name} terms={terms} /></h3>
+                    <div className="desc"><Highlight text={club.description} terms={terms} /></div>
                   </div>
                 </a>
                 <div className="body" style={{ paddingTop: 0 }}>

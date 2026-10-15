@@ -91,3 +91,14 @@ psql -d rlstest -v ex=deny -v optexp=deny -v optrev=allow -f supabase/tests/fix_
 (마이그레이션이 데이터를 바꾸지 않는지, 직책 규칙, 회장 교체·공석 방지·이력, 자동 권한 부여·회수, 점검·조치 함수, 함수 노출).
 `tests/fix_scenarios.sql`(07 이전 기준)을 07 적용 후에 돌리면 의도된 변경 3건이 실패로 나옵니다:
 회장의 직접 권한 부여 차단, 직접 직책 UPDATE 차단, 탈회 시 권한 자동 회수.
+
+## Security Advisor 경고 정리 (의도한 경고)
+2026-10 기준 Security Advisor 는 오류 0개, 경고 10개입니다. **모두 의도한 상태이므로 조치하지 않습니다.**
+
+| 경고 | 대상 | 이유 |
+|---|---|---|
+| 로그인 사용자가 SECURITY DEFINER 함수 실행 가능 (4개) | `has_club_perm`, `has_company_perm`, `has_global_perm`, `is_approved` | RLS 정책이 로그인 사용자 권한으로 호출해야 하므로 회수하면 앱이 멈춥니다. 호출한 본인의 권한만 조회합니다. |
+| 로그인 사용자가 SECURITY DEFINER 함수 실행 가능 (5개) | `change_club_chair`, `set_member_role`, `club_role_audit`, `resync_member_permissions`, `revoke_orphan_permissions` | 화면이 이 기능들을 호출합니다. 각 함수 안에서 권한(회장·통합관리자)을 다시 검사하며 `tests/roles_scenarios.sql` 에서 권한 없는 호출이 거부되는 것을 확인합니다. |
+| 유출된 비밀번호 차단 꺼짐 (1개) | Auth 설정 | Free 요금제에서는 사용할 수 없는 기능입니다. (유료 요금제로 올리면 켜는 것을 권장) |
+
+**비로그인(anon)이 호출할 수 있는 함수 경고("Public Can Execute")가 나타나면 문제입니다.** 06·07 의 `revoke` 가 빠졌는지 확인하세요.
