@@ -3,6 +3,8 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import MonthlyReportPrint from "./MonthlyReportPrint";
+import Highlight from "@/components/Highlight";
+import { parseTerms, matchesAllTerms } from "@/lib/search";
 import { RoleSelect, ChairChangePanel, ChairHistory } from "./RoleControls";
 
 import { MONTHLY_CLUB_CAP, projectMonthly } from "@/lib/subsidy";
@@ -48,8 +50,11 @@ export default function ClubDetailTabs({
   canManageRoles,
   chairHistory = [],
   isGuest,
+  initialTab,
 }) {
-  const [tab, setTab] = useState("board");
+  // 검색 결과 등에서 ?tab= 으로 들어오면 그 탭을 먼저 보여줍니다. (게스트는 게시판·갤러리만)
+  const allowedTabs = isGuest ? ["board", "gallery"] : TABS.map((t) => t.key);
+  const [tab, setTab] = useState(allowedTabs.includes(initialTab) ? initialTab : "board");
   const router = useRouter();
   const supabase = createClient();
   const visibleTabs = isGuest
@@ -258,6 +263,25 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, isStaff, type, isGal
   const [deleting, setDeleting] = useState({});
   const likeLockRef = useRef({});
 
+  // 이 탭 안의 검색: 제목·내용에 검색어가 모두 들어간 글만 보여줍니다. (띄어쓰기로 여러 단어 가능)
+  const [query, setQuery] = useState("");
+  const terms = parseTerms(query);
+  const shown = terms.length > 0 ? posts.filter((p) => matchesAllTerms([p.title, p.content], terms)) : posts;
+  const searchBox = (
+    <div className="row-flex" style={{ gap: 8, margin: "0 0 12px", alignItems: "center" }}>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={isGallery ? "사진 제목 검색" : "제목·내용 검색"}
+        aria-label="이 탭에서 검색"
+        style={{ flex: 1, maxWidth: 360, height: 34, border: "1px solid var(--line)", borderRadius: 8, padding: "0 10px", fontSize: 13 }}
+      />
+      {terms.length > 0 && <span className="co-tag">{shown.length}건 / 전체 {posts.length}건</span>}
+    </div>
+  );
+  const noResult = terms.length > 0 && shown.length === 0 && <div className="empty-note">검색 결과가 없습니다.</div>;
+
   function safeName(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, "_");
   }
@@ -364,8 +388,10 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, isStaff, type, isGal
     return (
       <div className="card">
         <div className="section-title">사진 갤러리</div>
+        {searchBox}
+        {noResult}
         <div className="gallery-grid">
-          {posts.map((p) => {
+          {shown.map((p) => {
             const photoUrl = p.post_attachments?.[0]?.file_url;
             const canDelete = canDeletePost(p);
             return (
@@ -447,15 +473,17 @@ function BoardTab({ posts, clubId, currentUserId, canWrite, isStaff, type, isGal
     <div className="grid-2">
       <div className="card">
         <div className="section-title">게시판</div>
-        {posts.map((p) => {
+        {searchBox}
+        {noResult}
+        {shown.map((p) => {
           const likes = p.post_likes || [];
           const likedByMe = likes.some((l) => l.user_id === currentUserId);
           const comments = p.post_comments || [];
           return (
             <div className="post-item" key={p.id}>
-              <div className="ptitle">{p.type === "notice" && <span className="pin">[공지] </span>}{p.title}</div>
+              <div className="ptitle">{p.type === "notice" && <span className="pin">[공지] </span>}<Highlight text={p.title} terms={terms} /></div>
               <div className="pmeta"><span>{p.author?.name}</span><span className="mono">{new Date(p.created_at).toLocaleDateString("ko-KR")}</span></div>
-              {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6 }}>{p.content}</div>}
+              {p.content && <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6 }}><Highlight text={p.content} terms={terms} /></div>}
 
               <div className="row-flex" style={{ marginTop: 8, gap: 10, alignItems: "center" }}>
                 <button

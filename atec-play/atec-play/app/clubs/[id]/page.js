@@ -11,7 +11,7 @@ import ClubDetailTabs from "./ClubDetailTabs";
 
 import { ok } from "@/lib/db";
 import { calcSubsidy, companyShares } from "@/lib/subsidy";
-export default async function ClubDetailPage({ params }) {
+export default async function ClubDetailPage({ params, searchParams }) {
   const { authUser, profile, permissions } = await getCurrentProfile();
   if (!authUser) redirect("/login");
   if (!profile || (profile.status !== "approved" && profile.status !== "pending")) redirect("/pending");
@@ -238,6 +238,7 @@ export default async function ClubDetailPage({ params }) {
           canManageRoles={canManageRoles}
           chairHistory={chairHistory}
           isGuest={isGuest}
+          initialTab={searchParams?.tab}
         />
       </div>
     </div>
