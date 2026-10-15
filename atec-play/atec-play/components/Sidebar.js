@@ -1,7 +1,9 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasPermission } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/client";
+import { badgeText } from "@/lib/notifications";
 
 const LINKS = [
   { href: "/dashboard", label: "대시보드" },
@@ -29,6 +31,23 @@ export default function Sidebar({ profile, permissions, active }) {
   const isBudgetOfficer =
     hasPermission(permissions, "CLUB_BUDGET_DISBURSE", { companyId }) ||
     hasPermission(permissions, "ORG_VIEW_COMPANY", { companyId });
+
+  // 읽지 않은 알림 수 (실패해도 화면은 그대로 동작)
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    createClient()
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null)
+      .then(({ count, error }) => {
+        if (alive && !error) setUnread(count || 0);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [active]);
 
   async function logout() {
     const supabase = createClient();
@@ -62,6 +81,13 @@ export default function Sidebar({ profile, permissions, active }) {
         </>
       )}
       <div className="side-section">내 정보</div>
+      <a href="/notifications" className={`side-link${active === "/notifications" ? " active" : ""}`}>
+        <span className="side-dot" />
+        알림
+        {unread > 0 && (
+          <span className="badge badge-amber" style={{ marginLeft: "auto" }} aria-label={`읽지 않은 알림 ${unread}건`}>{badgeText(unread)}</span>
+        )}
+      </a>
       <a href="/clubs?mine=1" className="side-link">
         <span className="side-dot" />
         내 동호회
